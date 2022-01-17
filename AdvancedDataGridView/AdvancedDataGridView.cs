@@ -11,9 +11,11 @@ using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Drawing;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Threading;
 #if NETFRAMEWORK
 using System.Web.Script.Serialization;
 #else
@@ -116,7 +118,32 @@ namespace Zuby.ADGV
         /// <summary>
         /// Internationalization strings
         /// </summary>
-        public static Dictionary<string, string> Translations = new Dictionary<string, string>()
+        public static Dictionary<string, string> Translations = GetTranslations();
+
+        private static Dictionary<string, string> GetTranslations()
+        {
+            switch (Thread.CurrentThread.CurrentUICulture.Name)
+            {
+                // Simplified Chinese
+                case "zh-Hans":
+                case "zh":
+                case "zh-CN":
+                case "zh-SG":
+                case "zh-CHS":
+                    return TranslationZH_CHS;
+                // Traditional Chinese
+                case "zh-Hant":
+                case "zh-HK":
+                case "zh-MO":
+                case "zh-TW":
+                case "zh-CHT":
+                    return TranslationZH_CHT;
+                default:
+                    return TranslationEN_US;
+            }
+        }
+
+        private static Dictionary<string, string> TranslationEN_US => new Dictionary<string, string>()
         {
             { TranslationKey.ADGVSortDateTimeASC.ToString(), "Sort Oldest to Newest" },
             { TranslationKey.ADGVSortDateTimeDESC.ToString(), "Sort Newest to Oldest" },
@@ -161,6 +188,100 @@ namespace Zuby.ADGV
             { TranslationKey.ADGVLabelAnd.ToString(), "And" },
             { TranslationKey.ADGVButtonOk.ToString(), "OK" },
             { TranslationKey.ADGVButtonCancel.ToString(), "Cancel" }
+        };
+
+        private static Dictionary<string, string> TranslationZH_CHS => new Dictionary<string, string>()
+        {
+            { TranslationKey.ADGVSortDateTimeASC.ToString(), "从旧到新排序" },
+            { TranslationKey.ADGVSortDateTimeDESC.ToString(), "从最新到最旧排序" },
+            { TranslationKey.ADGVSortBoolASC.ToString(), "按假/真排序" },
+            { TranslationKey.ADGVSortBoolDESC.ToString(), "按真/假排序" },
+            { TranslationKey.ADGVSortNumASC.ToString(), "从小到大排序" },
+            { TranslationKey.ADGVSortNumDESC.ToString(), "从大到小排序" },
+            { TranslationKey.ADGVSortTextASC.ToString(), "从 A 到 Z 排序" },
+            { TranslationKey.ADGVSortTextDESC.ToString(), "从 Z 到 A 排序" },
+            { TranslationKey.ADGVAddCustomFilter.ToString(), "添加自定义过滤" },
+            { TranslationKey.ADGVCustomFilter.ToString(), "自定义过滤" },
+            { TranslationKey.ADGVClearFilter.ToString(), "清除过滤" },
+            { TranslationKey.ADGVClearSort.ToString(), "清除排序" },
+            { TranslationKey.ADGVButtonFilter.ToString(), "过滤" },
+            { TranslationKey.ADGVButtonUndofilter.ToString(), "取消" },
+            { TranslationKey.ADGVNodeSelectAll.ToString(), "(全选)" },
+            { TranslationKey.ADGVNodeSelectEmpty.ToString(), "(空白)" },
+            { TranslationKey.ADGVNodeSelectTrue.ToString(), "真" },
+            { TranslationKey.ADGVNodeSelectFalse.ToString(), "假" },
+            { TranslationKey.ADGVFilterChecklistDisable.ToString(), "过滤列表已禁用" },
+            { TranslationKey.ADGVEquals.ToString(), "等于" },
+            { TranslationKey.ADGVDoesNotEqual.ToString(), "不等于" },
+            { TranslationKey.ADGVEarlierThan.ToString(), "早于" },
+            { TranslationKey.ADGVEarlierThanOrEqualTo.ToString(), "早于或等于" },
+            { TranslationKey.ADGVLaterThan.ToString(), "晚于"},
+            { TranslationKey.ADGVLaterThanOrEqualTo.ToString(), "晚于或等于" },
+            { TranslationKey.ADGVBetween.ToString(), "之间" },
+            { TranslationKey.ADGVGreaterThan.ToString(), "大于" },
+            { TranslationKey.ADGVGreaterThanOrEqualTo.ToString(), "大于或等于" },
+            { TranslationKey.ADGVLessThan.ToString(), "少于" },
+            { TranslationKey.ADGVLessThanOrEqualTo.ToString(), "小于或等于" },
+            { TranslationKey.ADGVBeginsWith.ToString(), "开始于" },
+            { TranslationKey.ADGVDoesNotBeginWith.ToString(), "不开始于" },
+            { TranslationKey.ADGVEndsWith.ToString(), "结尾于" },
+            { TranslationKey.ADGVDoesNotEndWith.ToString(), "不结尾于" },
+            { TranslationKey.ADGVContains.ToString(), "包含" },
+            { TranslationKey.ADGVDoesNotContain.ToString(), "不包含" },
+            { TranslationKey.ADGVInvalidValue.ToString(), "无效值" },
+            { TranslationKey.ADGVFilterStringDescription.ToString(), "显示值所在的行 {0} \"{1}\"" },
+            { TranslationKey.ADGVFormTitle.ToString(), "自定义过滤" },
+            { TranslationKey.ADGVLabelColumnNameText.ToString(), "显示值所在的行" },
+            { TranslationKey.ADGVLabelAnd.ToString(), "与" },
+            { TranslationKey.ADGVButtonOk.ToString(), "确定" },
+            { TranslationKey.ADGVButtonCancel.ToString(), "取消" }
+        };
+
+        private static Dictionary<string, string> TranslationZH_CHT => new Dictionary<string, string>()
+        {
+            { TranslationKey.ADGVSortDateTimeASC.ToString(), "從舊到新排序" },
+            { TranslationKey.ADGVSortDateTimeDESC.ToString(), "從最新到最舊排序" },
+            { TranslationKey.ADGVSortBoolASC.ToString(), "按假/真排序" },
+            { TranslationKey.ADGVSortBoolDESC.ToString(), "按真/假排序" },
+            { TranslationKey.ADGVSortNumASC.ToString(), "從小到大排序" },
+            { TranslationKey.ADGVSortNumDESC.ToString(), "從大到小排序" },
+            { TranslationKey.ADGVSortTextASC.ToString(), "從 A 到 Z 排序" },
+            { TranslationKey.ADGVSortTextDESC.ToString(), "從 Z 到 A 排序" },
+            { TranslationKey.ADGVAddCustomFilter.ToString(), "添加自定義過濾" },
+            { TranslationKey.ADGVCustomFilter.ToString(), "自定義過濾" },
+            { TranslationKey.ADGVClearFilter.ToString(), "清除過濾" },
+            { TranslationKey.ADGVClearSort.ToString(), "清除排序" },
+            { TranslationKey.ADGVButtonFilter.ToString(), "過濾" },
+            { TranslationKey.ADGVButtonUndofilter.ToString(), "取消" },
+            { TranslationKey.ADGVNodeSelectAll.ToString(), "(全選)" },
+            { TranslationKey.ADGVNodeSelectEmpty.ToString(), "(空白)" },
+            { TranslationKey.ADGVNodeSelectTrue.ToString(), "真" },
+            { TranslationKey.ADGVNodeSelectFalse.ToString(), "假" },
+            { TranslationKey.ADGVFilterChecklistDisable.ToString(), "過濾列表已禁用" },
+            { TranslationKey.ADGVEquals.ToString(), "等於" },
+            { TranslationKey.ADGVDoesNotEqual.ToString(), "不等於" },
+            { TranslationKey.ADGVEarlierThan.ToString(), "早於" },
+            { TranslationKey.ADGVEarlierThanOrEqualTo.ToString(), "早於或等於" },
+            { TranslationKey.ADGVLaterThan.ToString(), "晚於"},
+            { TranslationKey.ADGVLaterThanOrEqualTo.ToString(), "晚於或等於" },
+            { TranslationKey.ADGVBetween.ToString(), "之間" },
+            { TranslationKey.ADGVGreaterThan.ToString(), "大於" },
+            { TranslationKey.ADGVGreaterThanOrEqualTo.ToString(), "大於或等於" },
+            { TranslationKey.ADGVLessThan.ToString(), "少於" },
+            { TranslationKey.ADGVLessThanOrEqualTo.ToString(), "小於或等於" },
+            { TranslationKey.ADGVBeginsWith.ToString(), "開始於" },
+            { TranslationKey.ADGVDoesNotBeginWith.ToString(), "不開始於" },
+            { TranslationKey.ADGVEndsWith.ToString(), "結尾於" },
+            { TranslationKey.ADGVDoesNotEndWith.ToString(), "不結尾於" },
+            { TranslationKey.ADGVContains.ToString(), "包含" },
+            { TranslationKey.ADGVDoesNotContain.ToString(), "不包含" },
+            { TranslationKey.ADGVInvalidValue.ToString(), "無效值" },
+            { TranslationKey.ADGVFilterStringDescription.ToString(), "顯示值所在的行 {0} \"{1}\"" },
+            { TranslationKey.ADGVFormTitle.ToString(), "自定義過濾" },
+            { TranslationKey.ADGVLabelColumnNameText.ToString(), "顯示值所在的行" },
+            { TranslationKey.ADGVLabelAnd.ToString(), "與" },
+            { TranslationKey.ADGVButtonOk.ToString(), "確定" },
+            { TranslationKey.ADGVButtonCancel.ToString(), "取消" }
         };
 
         #endregion
@@ -239,15 +360,6 @@ namespace Zuby.ADGV
                         Translations[translation.Key] = translation.Value;
                 }
             }
-        }
-
-        /// <summary>
-        /// Get translation dictionary
-        /// </summary>
-        /// <returns></returns>
-        public static IDictionary<string, string> GetTranslations()
-        {
-            return Translations;
         }
 
         /// <summary>
