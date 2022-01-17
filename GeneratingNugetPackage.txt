@@ -1,0 +1,5 @@
+Steps to generate a NuGet package and publish to Ranplan feed
+
+1) Open AdvancedDataGridView Project properties, in Package tab, update the Package, Assembly and Assembly file version and Release notes.
+2) Build the project using msbuild (or built-in Visual Studio). You will get a nupkg file in Debug/Release directory.
+3) Using command line, push the nupkg file to Ranplan feed.
