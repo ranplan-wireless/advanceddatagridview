@@ -299,6 +299,8 @@ namespace Zuby.ADGV
         private string _sortString = null;
         private string _filterString = null;
 
+        private readonly bool _isSupportCustomFilter;
+
         #endregion
 
 
@@ -307,9 +309,10 @@ namespace Zuby.ADGV
         /// <summary>
         /// AdvancedDataGridView constructor
         /// </summary>
-        public AdvancedDataGridView()
+        public AdvancedDataGridView(bool isSupportCustomFilter = true)
         {
             RightToLeft = RightToLeft.No;
+            _isSupportCustomFilter = isSupportCustomFilter;
         }
 
         /// <summary>
@@ -468,7 +471,7 @@ namespace Zuby.ADGV
                 else
                 {
                     column.SortMode = DataGridViewColumnSortMode.Programmatic;
-                    cell = new ColumnHeaderCell(column.HeaderCell, true);
+                    cell = new ColumnHeaderCell(column.HeaderCell, true, _isSupportCustomFilter);
                     cell.SortChanged += new ColumnHeaderCellEventHandler(Cell_SortChanged);
                     cell.FilterChanged += new ColumnHeaderCellEventHandler(Cell_FilterChanged);
                     cell.FilterPopup += new ColumnHeaderCellEventHandler(Cell_FilterPopup);
@@ -1246,7 +1249,7 @@ namespace Zuby.ADGV
         protected override void OnColumnAdded(DataGridViewColumnEventArgs e)
         {
             e.Column.SortMode = DataGridViewColumnSortMode.Programmatic;
-            ColumnHeaderCell cell = new ColumnHeaderCell(e.Column.HeaderCell, FilterAndSortEnabled);
+            ColumnHeaderCell cell = new ColumnHeaderCell(e.Column.HeaderCell, FilterAndSortEnabled, _isSupportCustomFilter);
             cell.SortChanged += new ColumnHeaderCellEventHandler(Cell_SortChanged);
             cell.FilterChanged += new ColumnHeaderCellEventHandler(Cell_FilterChanged);
             cell.FilterPopup += new ColumnHeaderCellEventHandler(Cell_FilterPopup);

@@ -207,6 +207,18 @@ namespace Zuby.ADGV
             _textFilterTextChangedTimer.Tick += new EventHandler(this.CheckTextFilterTextChangedTimer_Tick);
         }
 
+        public void RemoveCustomFilterItem()
+        {
+            if (!Items.Contains(customFilterLastFiltersListMenuItem) || !Items.Contains(toolStripSeparator3MenuItem))
+                return;
+
+            Items.Remove(customFilterLastFiltersListMenuItem);
+            Items.Remove(toolStripSeparator3MenuItem);
+            Items.Remove(resizeBoxControlHost);
+            MinimumSize = new Size(Size.Width, Size.Height - 30);
+            Size = new Size(Size.Width, Size.Height - 30);
+        }
+
         /// <summary>
         /// Closed event
         /// </summary>

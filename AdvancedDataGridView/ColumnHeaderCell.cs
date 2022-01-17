@@ -47,6 +47,7 @@ namespace Zuby.ADGV
         private Rectangle _filterButtonImageBounds = Rectangle.Empty;
         private Padding _filterButtonMargin = new Padding(3, 4, 3, 4);
         private bool _filterEnabled = false;
+        private readonly bool _isSupportCustomFilter;
 
         /// <summary>
         /// Get the MenuStrip for this ColumnHeaderCell
@@ -63,7 +64,8 @@ namespace Zuby.ADGV
         /// </summary>
         /// <param name="oldCell"></param>
         /// <param name="filterEnabled"></param>
-        public ColumnHeaderCell(DataGridViewColumnHeaderCell oldCell, bool filterEnabled)
+        /// <param name="isSupportCustomFilter"></param>
+        public ColumnHeaderCell(DataGridViewColumnHeaderCell oldCell, bool filterEnabled, bool isSupportCustomFilter)
             : base()
         {
             Tag = oldCell.Tag;
@@ -74,6 +76,7 @@ namespace Zuby.ADGV
             ContextMenuStrip = oldCell.ContextMenuStrip;
             Style = oldCell.Style;
             _filterEnabled = filterEnabled;
+            _isSupportCustomFilter = isSupportCustomFilter;
 
             ColumnHeaderCell oldCellt = oldCell as ColumnHeaderCell;
             if (oldCellt != null && oldCellt.MenuStrip != null)
@@ -98,6 +101,9 @@ namespace Zuby.ADGV
             IsSortEnabled = true;
             IsFilterEnabled = true;
             IsFilterChecklistEnabled = true;
+
+            if (!_isSupportCustomFilter)
+                MenuStrip.RemoveCustomFilterItem();
         }
         ~ColumnHeaderCell()
         {
@@ -215,7 +221,7 @@ namespace Zuby.ADGV
         /// <returns></returns>
         public override object Clone()
         {
-            return new ColumnHeaderCell(this, FilterAndSortEnabled);
+            return new ColumnHeaderCell(this, FilterAndSortEnabled, _isSupportCustomFilter);
         }
 
         /// <summary>
