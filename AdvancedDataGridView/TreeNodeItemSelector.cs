@@ -127,6 +127,8 @@ namespace Zuby.ADGV
             }
         }
 
+        public bool IsExcludedFromView { get; set; }
+
         /// <summary>
         /// Get or Set the current Node CheckState
         /// </summary>

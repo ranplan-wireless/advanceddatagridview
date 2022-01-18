@@ -778,18 +778,17 @@ namespace Zuby.ADGV
                 {
                     if (_maxChecklistNodes == 0)
                     {
-                        if (!_removedNodes.Contains(node))
+                        if (!node.IsExcludedFromView)
                             checkList.Nodes.Add(node);
                     }
                     else
                     {
-                        if (nodecount < _maxChecklistNodes && !_removedNodes.Contains(node))
+                        if (nodecount < _maxChecklistNodes && !node.IsExcludedFromView)
                             checkList.Nodes.Add(node);
                         else if (nodecount == _maxChecklistNodes)
                             checkList.Nodes.Add("...");
-                        if (!_removedNodes.Contains(node) || nodecount == _maxChecklistNodes)
+                        if (!node.IsExcludedFromView || nodecount == _maxChecklistNodes)
                             nodecount++;
-
                     }
                 }
                 else
@@ -820,13 +819,16 @@ namespace Zuby.ADGV
             TreeNodeItemSelector selectAllNode = GetSelectAllNode();
             customFilterLastFiltersListMenuItem.Checked = false;
 
-            if (selectAllNode != null && selectAllNode.Checked && String.IsNullOrEmpty(checkTextFilter.Text))
+            if (selectAllNode != null && selectAllNode.Checked)
                 CancelFilterMenuItem_Click(null, new EventArgs());
             else
             {
                 string oldfilter = FilterString;
                 FilterString = "";
                 _activeFilterType = FilterType.CheckList;
+
+                if (selectAllNode != null && selectAllNode.CheckState == CheckState.Unchecked)
+                    FilterString = "[{0}] IS NULL";
 
                 if (_loadedNodes.Length > 1)
                 {
@@ -1180,14 +1182,6 @@ namespace Zuby.ADGV
         }
 
         /// <summary>
-        /// Check if filter buttons needs to be enabled
-        /// </summary>
-        private void CheckFilterButtonEnabled()
-        {
-            button_filter.Enabled = HasNodesChecked(_loadedNodes);
-        }
-
-        /// <summary>
         /// Check if selected nodes exists
         /// </summary>
         /// <param name="nodes"></param>
@@ -1393,8 +1387,6 @@ namespace Zuby.ADGV
             {
                 //check the node check status
                 NodeCheckChange(e.Node as TreeNodeItemSelector);
-                //set filter button enabled
-                CheckFilterButtonEnabled();
             }
         }
 
@@ -1409,8 +1401,6 @@ namespace Zuby.ADGV
             {
                 //check the node check status
                 NodeCheckChange(checkList.SelectedNode as TreeNodeItemSelector);
-                //set filter button enabled
-                CheckFilterButtonEnabled();
             }
         }
 
@@ -1426,8 +1416,6 @@ namespace Zuby.ADGV
             SetNodesCheckState(_loadedNodes, false);
             n.CheckState = CheckState.Unchecked;
             NodeCheckChange(n);
-            //set filter button enabled
-            CheckFilterButtonEnabled();
             //do Filter by checkList
             Button_ok_Click(this, new EventArgs());
         }
@@ -1748,35 +1736,26 @@ namespace Zuby.ADGV
         {
             TreeNodeItemSelector allnode = TreeNodeItemSelector.CreateNode(AdvancedDataGridView.Translations[AdvancedDataGridView.TranslationKey.ADGVNodeSelectAll.ToString()] + "            ", null, CheckState.Checked, TreeNodeItemSelector.CustomNodeType.SelectAll);
             TreeNodeItemSelector nullnode = TreeNodeItemSelector.CreateNode(AdvancedDataGridView.Translations[AdvancedDataGridView.TranslationKey.ADGVNodeSelectEmpty.ToString()] + "               ", null, CheckState.Checked, TreeNodeItemSelector.CustomNodeType.SelectEmpty);
-            string[] removednodesText = new string[] { };
-            if (_checkTextFilterRemoveNodesOnSearch)
-            {
-                removednodesText = _removedsessionNodes.Where(r => !String.IsNullOrEmpty(r.Text)).Select(r => r.Text.ToLower()).Distinct().ToArray();
-            }
             for (int i = _loadedNodes.Length - 1; i >= 0; i--)
             {
                 TreeNodeItemSelector node = _loadedNodes[i];
                 if (node.Text == allnode.Text)
                 {
-                    node.CheckState = CheckState.Indeterminate;
+                    node.IsExcludedFromView = false;
                 }
                 else if (node.Text == nullnode.Text)
                 {
-                    node.CheckState = CheckState.Unchecked;
+                    node.IsExcludedFromView = true;
                 }
                 else
                 {
                     if (node.Text.ToLower().Contains(text))
-                        node.CheckState = CheckState.Unchecked;
+                        node.IsExcludedFromView = false;
                     else
-                        node.CheckState = CheckState.Checked;
-                    if (removednodesText.Contains(node.Text.ToLower()))
-                        node.CheckState = CheckState.Checked;
-                    NodeCheckChange(node);
+                        node.IsExcludedFromView = true;
                 }
             }
-            //set filter button enabled
-            CheckFilterButtonEnabled();
+
             _removedNodes = _removedsessionNodes;
             if (_checkTextFilterRemoveNodesOnSearch)
             {
