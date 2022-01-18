@@ -797,6 +797,10 @@ namespace Zuby.ADGV
                 }
 
             }
+
+            if (checkList.Nodes.Count == 1)
+                checkList.Nodes.Clear();
+
             checkList.EndUpdate();
         }
 
