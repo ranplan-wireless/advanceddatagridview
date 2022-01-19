@@ -1353,7 +1353,7 @@ namespace Zuby.ADGV
         {
             TreeNodeItemSelector result = null;
             int i = 0;
-            foreach (TreeNodeItemSelector n in ChecklistNodes().OfType<TreeNodeItemSelector>())
+            foreach (TreeNodeItemSelector n in _loadedNodes)
             {
                 if (n.NodeType == TreeNodeItemSelector.CustomNodeType.SelectAll)
                 {
@@ -1377,7 +1377,7 @@ namespace Zuby.ADGV
         {
             TreeNodeItemSelector result = null;
             int i = 0;
-            foreach (TreeNodeItemSelector n in ChecklistNodes().OfType<TreeNodeItemSelector>())
+            foreach (TreeNodeItemSelector n in _loadedNodes)
             {
                 if (n.NodeType == TreeNodeItemSelector.CustomNodeType.SelectEmpty)
                 {
