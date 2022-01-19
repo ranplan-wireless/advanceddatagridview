@@ -236,6 +236,8 @@ namespace Zuby.ADGV
             _startingNodes = new TreeNodeItemSelector[] { };
 
             checkTextFilter.Text = "";
+            CheckState state = UpdateNodesCheckState(ChecklistNodes());
+            GetSelectAllNode().CheckState = state;
         }
 
         /// <summary>
@@ -826,7 +828,7 @@ namespace Zuby.ADGV
             TreeNodeItemSelector selectAllNode = GetSelectAllNode();
             customFilterLastFiltersListMenuItem.Checked = false;
 
-            if (selectAllNode != null && selectAllNode.Checked)
+            if (selectAllNode != null && selectAllNode.Checked && String.IsNullOrEmpty(checkTextFilter.Text))
                 CancelFilterMenuItem_Click(null, new EventArgs());
             else
             {
