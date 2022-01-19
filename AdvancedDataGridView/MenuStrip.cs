@@ -235,9 +235,7 @@ namespace Zuby.ADGV
 
             _startingNodes = new TreeNodeItemSelector[] { };
 
-            _checkTextFilterChangedEnabled = false;
             checkTextFilter.Text = "";
-            _checkTextFilterChangedEnabled = true;
         }
 
         /// <summary>
