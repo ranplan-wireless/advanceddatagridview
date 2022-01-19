@@ -581,6 +581,9 @@ namespace Zuby.ADGV
 
             if (_activeFilterType == FilterType.Custom)
                 SetNodesCheckState(_loadedNodes, false);
+
+            button_filter.Enabled = _loadedNodes.Any();
+
             base.Show(control, x, y);
 
             _filterclick = false;
@@ -615,6 +618,8 @@ namespace Zuby.ADGV
             }
 
             ChecklistReloadNodes();
+
+            button_filter.Enabled = _loadedNodes.Any();
 
             base.Show(control, x, y);
 
@@ -1002,95 +1007,110 @@ namespace Zuby.ADGV
 
             ChecklistClearNodes();
 
-            if (vals != null)
+            if (vals?.Any() ?? false)
             {
                 //add select all node
-                TreeNodeItemSelector allnode = TreeNodeItemSelector.CreateNode(AdvancedDataGridView.Translations[AdvancedDataGridView.TranslationKey.ADGVNodeSelectAll.ToString()] + "            ", null, CheckState.Checked, TreeNodeItemSelector.CustomNodeType.SelectAll);
+                TreeNodeItemSelector allnode = TreeNodeItemSelector.CreateNode(
+                    AdvancedDataGridView.Translations
+                        [AdvancedDataGridView.TranslationKey.ADGVNodeSelectAll.ToString()] + "            ", null,
+                    CheckState.Checked, TreeNodeItemSelector.CustomNodeType.SelectAll);
                 allnode.NodeFont = new Font(checkList.Font, FontStyle.Bold);
                 ChecklistAddNode(allnode);
 
-                if (vals.Count() > 0)
+                var nonulls = vals.Where<DataGridViewCell>(c => c.Value != null && c.Value != DBNull.Value);
+
+                //add select empty node
+                if (vals.Count() != nonulls.Count())
                 {
-                    var nonulls = vals.Where<DataGridViewCell>(c => c.Value != null && c.Value != DBNull.Value);
+                    TreeNodeItemSelector nullnode = TreeNodeItemSelector.CreateNode(
+                        AdvancedDataGridView.Translations[
+                            AdvancedDataGridView.TranslationKey.ADGVNodeSelectEmpty.ToString()] + "               ",
+                        null, CheckState.Checked, TreeNodeItemSelector.CustomNodeType.SelectEmpty);
+                    nullnode.NodeFont = new Font(checkList.Font, FontStyle.Bold);
+                    ChecklistAddNode(nullnode);
+                }
 
-                    //add select empty node
-                    if (vals.Count() != nonulls.Count())
+                //add datetime nodes
+                if (DataType == typeof(DateTime))
+                {
+                    var years =
+                        from year in nonulls
+                        group year by ((DateTime)year.Value).Year
+                        into cy
+                        orderby cy.Key ascending
+                        select cy;
+
+                    foreach (var year in years)
                     {
-                        TreeNodeItemSelector nullnode = TreeNodeItemSelector.CreateNode(AdvancedDataGridView.Translations[AdvancedDataGridView.TranslationKey.ADGVNodeSelectEmpty.ToString()] + "               ", null, CheckState.Checked, TreeNodeItemSelector.CustomNodeType.SelectEmpty);
-                        nullnode.NodeFont = new Font(checkList.Font, FontStyle.Bold);
-                        ChecklistAddNode(nullnode);
-                    }
+                        TreeNodeItemSelector yearnode = TreeNodeItemSelector.CreateNode(year.Key.ToString(), year.Key,
+                            CheckState.Checked, TreeNodeItemSelector.CustomNodeType.DateTimeNode);
+                        ChecklistAddNode(yearnode);
 
-                    //add datetime nodes
-                    if (DataType == typeof(DateTime))
-                    {
-                        var years =
-                            from year in nonulls
-                            group year by ((DateTime)year.Value).Year into cy
-                            orderby cy.Key ascending
-                            select cy;
+                        var months =
+                            from month in year
+                            group month by ((DateTime)month.Value).Month
+                            into cm
+                            orderby cm.Key ascending
+                            select cm;
 
-                        foreach (var year in years)
+                        foreach (var month in months)
                         {
-                            TreeNodeItemSelector yearnode = TreeNodeItemSelector.CreateNode(year.Key.ToString(), year.Key, CheckState.Checked, TreeNodeItemSelector.CustomNodeType.DateTimeNode);
-                            ChecklistAddNode(yearnode);
+                            TreeNodeItemSelector monthnode = yearnode.CreateChildNode(
+                                CultureInfo.CurrentCulture.DateTimeFormat.GetMonthName(month.Key), month.Key);
 
-                            var months =
-                                from month in year
-                                group month by ((DateTime)month.Value).Month into cm
-                                orderby cm.Key ascending
-                                select cm;
+                            var days =
+                                from day in month
+                                group day by ((DateTime)day.Value).Day
+                                into cd
+                                orderby cd.Key ascending
+                                select cd;
 
-                            foreach (var month in months)
+                            foreach (var day in days)
                             {
-                                TreeNodeItemSelector monthnode = yearnode.CreateChildNode(CultureInfo.CurrentCulture.DateTimeFormat.GetMonthName(month.Key), month.Key);
+                                TreeNodeItemSelector daysnode;
 
-                                var days =
-                                    from day in month
-                                    group day by ((DateTime)day.Value).Day into cd
-                                    orderby cd.Key ascending
-                                    select cd;
-
-                                foreach (var day in days)
+                                if (!IsFilterDateAndTimeEnabled)
+                                    daysnode = monthnode.CreateChildNode(day.Key.ToString("D2"), day.First().Value);
+                                else
                                 {
-                                    TreeNodeItemSelector daysnode;
+                                    daysnode = monthnode.CreateChildNode(day.Key.ToString("D2"), day.Key);
 
-                                    if (!IsFilterDateAndTimeEnabled)
-                                        daysnode = monthnode.CreateChildNode(day.Key.ToString("D2"), day.First().Value);
-                                    else
+                                    var hours =
+                                        from hour in day
+                                        group hour by ((DateTime)hour.Value).Hour
+                                        into ch
+                                        orderby ch.Key ascending
+                                        select ch;
+
+                                    foreach (var hour in hours)
                                     {
-                                        daysnode = monthnode.CreateChildNode(day.Key.ToString("D2"), day.Key);
+                                        TreeNodeItemSelector hoursnode =
+                                            daysnode.CreateChildNode(hour.Key.ToString("D2") + " " + "h", hour.Key);
 
-                                        var hours =
-                                            from hour in day
-                                            group hour by ((DateTime)hour.Value).Hour into ch
-                                            orderby ch.Key ascending
-                                            select ch;
+                                        var mins =
+                                            from min in hour
+                                            group min by ((DateTime)min.Value).Minute
+                                            into cmin
+                                            orderby cmin.Key ascending
+                                            select cmin;
 
-                                        foreach (var hour in hours)
+                                        foreach (var min in mins)
                                         {
-                                            TreeNodeItemSelector hoursnode = daysnode.CreateChildNode(hour.Key.ToString("D2") + " " + "h", hour.Key);
+                                            TreeNodeItemSelector minsnode =
+                                                hoursnode.CreateChildNode(min.Key.ToString("D2") + " " + "m", min.Key);
 
-                                            var mins =
-                                                from min in hour
-                                                group min by ((DateTime)min.Value).Minute into cmin
-                                                orderby cmin.Key ascending
-                                                select cmin;
+                                            var secs =
+                                                from sec in min
+                                                group sec by ((DateTime)sec.Value).Second
+                                                into cs
+                                                orderby cs.Key ascending
+                                                select cs;
 
-                                            foreach (var min in mins)
+                                            foreach (var sec in secs)
                                             {
-                                                TreeNodeItemSelector minsnode = hoursnode.CreateChildNode(min.Key.ToString("D2") + " " + "m", min.Key);
-
-                                                var secs =
-                                                    from sec in min
-                                                    group sec by ((DateTime)sec.Value).Second into cs
-                                                    orderby cs.Key ascending
-                                                    select cs;
-
-                                                foreach (var sec in secs)
-                                                {
-                                                    TreeNodeItemSelector secsnode = minsnode.CreateChildNode(sec.Key.ToString("D2") + " " + "s", sec.First().Value);
-                                                }
+                                                TreeNodeItemSelector secsnode =
+                                                    minsnode.CreateChildNode(sec.Key.ToString("D2") + " " + "s",
+                                                        sec.First().Value);
                                             }
                                         }
                                     }
@@ -1098,86 +1118,102 @@ namespace Zuby.ADGV
                             }
                         }
                     }
+                }
 
-                    //add timespan nodes
-                    else if (DataType == typeof(TimeSpan))
+                //add timespan nodes
+                else if (DataType == typeof(TimeSpan))
+                {
+                    var days =
+                        from day in nonulls
+                        group day by ((TimeSpan)day.Value).Days
+                        into cd
+                        orderby cd.Key ascending
+                        select cd;
+
+                    foreach (var day in days)
                     {
-                        var days =
-                            from day in nonulls
-                            group day by ((TimeSpan)day.Value).Days into cd
-                            orderby cd.Key ascending
-                            select cd;
+                        TreeNodeItemSelector daysnode = TreeNodeItemSelector.CreateNode(day.Key.ToString("D2"), day.Key,
+                            CheckState.Checked, TreeNodeItemSelector.CustomNodeType.DateTimeNode);
+                        ChecklistAddNode(daysnode);
 
-                        foreach (var day in days)
+                        var hours =
+                            from hour in day
+                            group hour by ((TimeSpan)hour.Value).Hours
+                            into ch
+                            orderby ch.Key ascending
+                            select ch;
+
+                        foreach (var hour in hours)
                         {
-                            TreeNodeItemSelector daysnode = TreeNodeItemSelector.CreateNode(day.Key.ToString("D2"), day.Key, CheckState.Checked, TreeNodeItemSelector.CustomNodeType.DateTimeNode);
-                            ChecklistAddNode(daysnode);
+                            TreeNodeItemSelector hoursnode =
+                                daysnode.CreateChildNode(hour.Key.ToString("D2") + " " + "h", hour.Key);
 
-                            var hours =
-                                from hour in day
-                                group hour by ((TimeSpan)hour.Value).Hours into ch
-                                orderby ch.Key ascending
-                                select ch;
+                            var mins =
+                                from min in hour
+                                group min by ((TimeSpan)min.Value).Minutes
+                                into cmin
+                                orderby cmin.Key ascending
+                                select cmin;
 
-                            foreach (var hour in hours)
+                            foreach (var min in mins)
                             {
-                                TreeNodeItemSelector hoursnode = daysnode.CreateChildNode(hour.Key.ToString("D2") + " " + "h", hour.Key);
+                                TreeNodeItemSelector minsnode =
+                                    hoursnode.CreateChildNode(min.Key.ToString("D2") + " " + "m", min.Key);
 
-                                var mins =
-                                    from min in hour
-                                    group min by ((TimeSpan)min.Value).Minutes into cmin
-                                    orderby cmin.Key ascending
-                                    select cmin;
+                                var secs =
+                                    from sec in min
+                                    group sec by ((TimeSpan)sec.Value).Seconds
+                                    into cs
+                                    orderby cs.Key ascending
+                                    select cs;
 
-                                foreach (var min in mins)
+                                foreach (var sec in secs)
                                 {
-                                    TreeNodeItemSelector minsnode = hoursnode.CreateChildNode(min.Key.ToString("D2") + " " + "m", min.Key);
-
-                                    var secs =
-                                        from sec in min
-                                        group sec by ((TimeSpan)sec.Value).Seconds into cs
-                                        orderby cs.Key ascending
-                                        select cs;
-
-                                    foreach (var sec in secs)
-                                    {
-                                        TreeNodeItemSelector secsnode = minsnode.CreateChildNode(sec.Key.ToString("D2") + " " + "s", sec.First().Value);
-                                    }
+                                    TreeNodeItemSelector secsnode =
+                                        minsnode.CreateChildNode(sec.Key.ToString("D2") + " " + "s", sec.First().Value);
                                 }
                             }
                         }
                     }
+                }
 
-                    //add boolean nodes
-                    else if (DataType == typeof(bool))
+                //add boolean nodes
+                else if (DataType == typeof(bool))
+                {
+                    var values = nonulls.Where<DataGridViewCell>(c => (bool)c.Value == true);
+
+                    if (values.Count() != nonulls.Count())
                     {
-                        var values = nonulls.Where<DataGridViewCell>(c => (bool)c.Value == true);
-
-                        if (values.Count() != nonulls.Count())
-                        {
-                            TreeNodeItemSelector node = TreeNodeItemSelector.CreateNode(AdvancedDataGridView.Translations[AdvancedDataGridView.TranslationKey.ADGVNodeSelectFalse.ToString()], false, CheckState.Checked, TreeNodeItemSelector.CustomNodeType.Default);
-                            ChecklistAddNode(node);
-                        }
-
-                        if (values.Count() > 0)
-                        {
-                            TreeNodeItemSelector node = TreeNodeItemSelector.CreateNode(AdvancedDataGridView.Translations[AdvancedDataGridView.TranslationKey.ADGVNodeSelectTrue.ToString()], true, CheckState.Checked, TreeNodeItemSelector.CustomNodeType.Default);
-                            ChecklistAddNode(node);
-                        }
+                        TreeNodeItemSelector node = TreeNodeItemSelector.CreateNode(
+                            AdvancedDataGridView.Translations[
+                                AdvancedDataGridView.TranslationKey.ADGVNodeSelectFalse.ToString()], false,
+                            CheckState.Checked, TreeNodeItemSelector.CustomNodeType.Default);
+                        ChecklistAddNode(node);
                     }
 
-                    //ignore image nodes
-                    else if (DataType == typeof(Bitmap))
-                    { }
-
-                    //add string nodes
-                    else
+                    if (values.Count() > 0)
                     {
-                        foreach (var v in nonulls.GroupBy(c => c.Value).OrderBy(g => g.Key))
-                        {
-                            TreeNodeItemSelector node = TreeNodeItemSelector.CreateNode(v.First().FormattedValue.ToString(), v.Key, CheckState.Checked, TreeNodeItemSelector.CustomNodeType.Default);
-                            ChecklistAddNode(node);
-                        }
+                        TreeNodeItemSelector node = TreeNodeItemSelector.CreateNode(
+                            AdvancedDataGridView.Translations[
+                                AdvancedDataGridView.TranslationKey.ADGVNodeSelectTrue.ToString()], true,
+                            CheckState.Checked, TreeNodeItemSelector.CustomNodeType.Default);
+                        ChecklistAddNode(node);
+                    }
+                }
+
+                //ignore image nodes
+                else if (DataType == typeof(Bitmap))
+                {
+                }
+
+                //add string nodes
+                else
+                {
+                    foreach (var v in nonulls.GroupBy(c => c.Value).OrderBy(g => g.Key))
+                    {
+                        TreeNodeItemSelector node = TreeNodeItemSelector.CreateNode(v.First().FormattedValue.ToString(),
+                            v.Key, CheckState.Checked, TreeNodeItemSelector.CustomNodeType.Default);
+                        ChecklistAddNode(node);
                     }
                 }
             }
