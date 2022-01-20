@@ -237,7 +237,9 @@ namespace Zuby.ADGV
 
             checkTextFilter.Text = "";
             CheckState state = UpdateNodesCheckState(ChecklistNodes());
-            GetSelectAllNode().CheckState = state;
+            var selectAllNode = GetSelectAllNode();
+            if (selectAllNode != null)
+                selectAllNode.CheckState = state;
         }
 
         /// <summary>
