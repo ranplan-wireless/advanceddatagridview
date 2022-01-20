@@ -1211,7 +1211,7 @@ namespace Zuby.ADGV
                 //add string nodes
                 else
                 {
-                    foreach (var v in nonulls.GroupBy(c => c.Value).OrderBy(g => g.Key))
+                    foreach (var v in nonulls.GroupBy(c => c.Value))
                     {
                         TreeNodeItemSelector node = TreeNodeItemSelector.CreateNode(v.First().FormattedValue.ToString(),
                             v.Key, CheckState.Checked, TreeNodeItemSelector.CustomNodeType.Default);
