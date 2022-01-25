@@ -340,10 +340,8 @@ namespace Zuby.ADGV
         /// </summary>
         public SortType ActiveSortType
         {
-            get
-            {
-                return _activeSortType;
-            }
+            get => _activeSortType;
+            set => _activeSortType = value;
         }
 
         /// <summary>
@@ -351,10 +349,8 @@ namespace Zuby.ADGV
         /// </summary>
         public FilterType ActiveFilterType
         {
-            get
-            {
-                return _activeFilterType;
-            }
+            get => _activeFilterType;
+            set => _activeFilterType = value;
         }
 
         /// <summary>
@@ -672,8 +668,8 @@ namespace Zuby.ADGV
             get
             {
                 return (!String.IsNullOrEmpty(_sortString) ? _sortString : "");
-            }
-            private set
+            } 
+            set
             {
                 cancelSortMenuItem.Enabled = (value != null && value.Length > 0);
                 _sortString = value;
@@ -705,8 +701,8 @@ namespace Zuby.ADGV
             get
             {
                 return (!String.IsNullOrEmpty(_filterString) ? _filterString : "");
-            }
-            private set
+            } 
+            set
             {
                 cancelFilterMenuItem.Enabled = (value != null && value.Length > 0);
                 _filterString = value;
@@ -1002,7 +998,7 @@ namespace Zuby.ADGV
         /// Add nodes to checkList
         /// </summary>
         /// <param name="vals"></param>
-        private void BuildNodes(IEnumerable<DataGridViewCell> vals)
+        internal void BuildNodes(IEnumerable<DataGridViewCell> vals)
         {
             if (!IsFilterChecklistEnabled)
                 return;
@@ -2125,5 +2121,10 @@ namespace Zuby.ADGV
 
         #endregion
 
+        public void SetupSortItemCheckStatus(SortType sortType)
+        {
+            sortASCMenuItem.Checked = sortType == SortType.ASC;
+            sortDESCMenuItem.Checked = sortType == SortType.DESC;
+        }
     }
 }

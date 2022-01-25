@@ -15,6 +15,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading;
 #if NETFRAMEWORK
 using System.Web.Script.Serialization;
@@ -724,20 +725,99 @@ namespace Zuby.ADGV
         /// <param name="sorting"></param>
         public void LoadFilterAndSort(string filter, string sorting)
         {
-            foreach (ColumnHeaderCell c in FilterableCells)
-                c.SetLoadedMode(true);
-
             _filteredColumns.Clear();
-
             _filterOrderList.Clear();
             _sortOrderList.Clear();
+
+            var regex = new Regex(@"\[(.+?)]");
+            var filteredColumns = regex.Matches(filter).OfType<Match>().Select(x => x.Groups[1].Value);
+            var sortedColumns = regex.Matches(sorting).OfType<Match>().Select(x => x.Groups[1].Value);
+
+            _filterOrderList.AddRange(filteredColumns);
+            _sortOrderList.AddRange(sortedColumns);
 
             if (filter != null)
                 FilterString = filter;
             if (sorting != null)
                 SortString = sorting;
 
-            _loadedFilter = true;
+            var filterInfos = GetFilterInfos(filter);
+            var sortInfos = GetSortInfos(sorting);
+            SetupMenuStrip(filterInfos, sortInfos);
+        }
+
+        private IList<FilterInfo> GetFilterInfos(string filter)
+        {
+            var filterInfos = new List<FilterInfo>();
+            if (string.IsNullOrEmpty(filter))
+                return filterInfos;
+
+            var columnFilters = filter.Split(new[] { " AND " }, StringSplitOptions.RemoveEmptyEntries);
+            for (var i = 0; i < _filterOrderList.Count; i++)
+            {
+                filterInfos.Add(new FilterInfo() {ColumnName = _filterOrderList[i], FilterString = columnFilters[i]});
+            }
+
+            return filterInfos;
+        }
+
+        private IList<SortInfo> GetSortInfos(string sorting)
+        {
+            var sortInfos = new List<SortInfo>();
+            if (string.IsNullOrEmpty(sorting))
+                return sortInfos;
+
+            var originalSorting = sorting.Split(new[] {", "}, StringSplitOptions.RemoveEmptyEntries);
+            var columnSortTypes = originalSorting
+                .Select(columnSorting => columnSorting.Split(' ').Last())
+                .ToList();
+
+            for (var i = 0; i < _sortOrderList.Count; i++)
+                sortInfos.Add(new SortInfo
+                {
+                    ColumnName = _sortOrderList[i],
+                    SortType = columnSortTypes[i],
+                    SortString = originalSorting[i]
+                });
+
+            return sortInfos;
+        }
+
+        private void SetupMenuStrip(IList<FilterInfo> filterInfos, IList<SortInfo> sortInfos)
+        {
+            if (!_filterOrderList.Any() && !sortInfos.Any() )
+                return;
+
+            var lastColumn = _filterOrderList.LastOrDefault();
+            foreach (DataGridViewColumn column in Columns)
+            {
+                var headCell = (ColumnHeaderCell) column.HeaderCell;
+                var menuStrip = headCell.MenuStrip;
+                var columnName = column.Name;
+                if (columnName == lastColumn)
+                {
+                    var filterValues = MenuStrip.GetValuesForFilter(this, columnName);
+                    menuStrip.BuildNodes(filterValues);
+                }
+
+                var matchedFilterInfo = filterInfos.FirstOrDefault(info => info.ColumnName == columnName);
+                if (matchedFilterInfo != null)
+                {
+                    menuStrip.ActiveFilterType = MenuStrip.FilterType.CheckList;
+                    menuStrip.FilterString = matchedFilterInfo.FilterString;
+                }
+
+                var matchedSortInfo = sortInfos.FirstOrDefault(info => info.ColumnName == columnName);
+                if (matchedSortInfo != null)
+                {
+                    var sortType = (MenuStrip.SortType) Enum.Parse(typeof(MenuStrip.SortType), matchedSortInfo.SortType);
+                    menuStrip.ActiveSortType = sortType;
+                    menuStrip.SortString = matchedSortInfo.SortString;
+                    menuStrip.SetupSortItemCheckStatus(sortType);
+                }
+
+                headCell.RefreshImage();
+            }
         }
 
         /// <summary>
@@ -1471,5 +1551,17 @@ namespace Zuby.ADGV
 
         #endregion
 
+        private class SortInfo
+        {
+            public string ColumnName { get; set; }
+            public string SortType { get; set; }
+            public string SortString { get; set; }
+        }
+
+        private class FilterInfo
+        {
+            public string ColumnName { get; set; }
+            public string FilterString { get; set; }
+        }
     }
 }

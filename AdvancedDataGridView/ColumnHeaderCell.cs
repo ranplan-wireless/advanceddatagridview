@@ -565,7 +565,7 @@ namespace Zuby.ADGV
         /// <summary>
         /// Refrash the Cell image
         /// </summary>
-        private void RefreshImage()
+        internal void RefreshImage()
         {
             if (ActiveFilterType == MenuStrip.FilterType.Loaded)
             {
