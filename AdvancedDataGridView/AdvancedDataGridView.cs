@@ -30,7 +30,7 @@ namespace Zuby.ADGV
     [System.ComponentModel.DesignerCategory("")]
     public class AdvancedDataGridView : DataGridView
     {
-
+        private bool _needUpdateFilter;
         #region public events
 
         public class SortEventArgs : EventArgs
@@ -1377,7 +1377,9 @@ namespace Zuby.ADGV
         {
             if (e.RowIndex >= 0)
                 _filteredColumns.Clear();
+
             base.OnRowsAdded(e);
+            _needUpdateFilter = true;
         }
 
         /// <summary>
@@ -1388,7 +1390,9 @@ namespace Zuby.ADGV
         {
             if (e.RowIndex >= 0)
                 _filteredColumns.Clear();
+
             base.OnRowsRemoved(e);
+            _needUpdateFilter = true;
         }
 
         #endregion
@@ -1461,7 +1465,17 @@ namespace Zuby.ADGV
                 {
                     _filteredColumns.Add(column.Name);
                     if (_filterOrderList.Count() > 0 && _filterOrderList.Last() == column.Name)
-                        filterMenu.Show(this, rect.Left, rect.Bottom, true);
+                    {
+                        if (_needUpdateFilter)
+                        {
+                            filterMenu.Show(this, rect.Left, rect.Bottom, MenuStrip.GetValuesForFilter(this, column.Name));
+                            _needUpdateFilter = false;
+                        }
+                        else
+                        {
+                            filterMenu.Show(this, rect.Left, rect.Bottom, true);
+                        }
+                    }
                     else
                         filterMenu.Show(this, rect.Left, rect.Bottom, MenuStrip.GetValuesForFilter(this, column.Name));
                 }
