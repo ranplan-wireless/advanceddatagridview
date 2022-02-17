@@ -236,10 +236,12 @@ namespace Zuby.ADGV
             _startingNodes = new TreeNodeItemSelector[] { };
 
             checkTextFilter.Text = "";
-            CheckState state = UpdateNodesCheckState(ChecklistNodes());
+
+            // as we don't require the node state should be persisted, we always set
+            // the SelectAll node as checked when close the drop-down menu.
             var selectAllNode = GetSelectAllNode();
             if (selectAllNode != null)
-                selectAllNode.CheckState = state;
+                selectAllNode.Checked = true;
         }
 
         /// <summary>
