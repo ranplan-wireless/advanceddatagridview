@@ -730,8 +730,8 @@ namespace Zuby.ADGV
             _sortOrderList.Clear();
 
             var regex = new Regex(@"\[(.+?)]");
-            var filteredColumns = regex.Matches(filter).OfType<Match>().Select(x => x.Groups[1].Value);
-            var sortedColumns = regex.Matches(sorting).OfType<Match>().Select(x => x.Groups[1].Value);
+            var filteredColumns = regex.Matches(filter).OfType<Match>().Select(x => x.Groups[1].Value).Distinct();
+            var sortedColumns = regex.Matches(sorting).OfType<Match>().Select(x => x.Groups[1].Value).Distinct();
 
             _filterOrderList.AddRange(filteredColumns);
             _sortOrderList.AddRange(sortedColumns);
