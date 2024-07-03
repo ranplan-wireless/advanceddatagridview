@@ -17,11 +17,7 @@ using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
-#if NETFRAMEWORK
-using System.Web.Script.Serialization;
-#else
 using System.Text.Json;
-#endif
 using System.Windows.Forms;
 
 namespace Zuby.ADGV
@@ -332,16 +328,27 @@ namespace Zuby.ADGV
                     cell.FilterPopup -= Cell_FilterPopup;
                 }
             }
+
+            Cleanup();
+
+            base.OnHandleDestroyed(e);
+        }
+
+        private void Cleanup()
+        {
             foreach (ColumnHeaderCell cell in _columnHeaderCellsToCleanEvents)
             {
                 cell.CleanEvents();
             }
+
+            _columnHeaderCellsToCleanEvents.Clear();
+
             foreach (MenuStrip menustrip in _menuStripToDispose)
             {
                 menustrip.Dispose();
             }
 
-            base.OnHandleDestroyed(e);
+            _menuStripToDispose.Clear();
         }
 
         #endregion
@@ -381,11 +388,8 @@ namespace Zuby.ADGV
                 try
                 {
                     string jsontext = File.ReadAllText(filename);
-#if NETFRAMEWORK
-                    Dictionary<string, string> translations = new JavaScriptSerializer().Deserialize<Dictionary<string, string>>(jsontext);
-#else
                     Dictionary<string, string> translations = JsonSerializer.Deserialize<Dictionary<string, string>>(jsontext);
-#endif
+
                     foreach (KeyValuePair<string, string> translation in translations)
                     {
                         if (!ret.ContainsKey(translation.Key) && Translations.ContainsKey(translation.Key))
@@ -407,6 +411,11 @@ namespace Zuby.ADGV
 
         #endregion
 
+        protected override void OnDataSourceChanged(EventArgs e)
+        {
+            Cleanup();
+            base.OnDataSourceChanged(e);
+        }
 
         #region public Helper methods
 
