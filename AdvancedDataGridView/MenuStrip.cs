@@ -99,6 +99,10 @@ namespace Zuby.ADGV
         private Timer _textFilterTextChangedTimer;
         private int _textFilterTextChangedDelayNodes = DefaultTextFilterTextChangedDelayNodes;
         private int _textFilterTextChangedDelayMs = DefaultTextFilterTextChangedDelayMs;
+        private HashSet<string> _checkListNotInLiterals = new HashSet<string>();
+        private bool _checkListLastUsedNotIn = false;
+        private HashSet<string> _checkListAllLiterals = new HashSet<string>();
+        private bool _checkListLiteralStateInitialized = false;
 
         #endregion
 
@@ -722,6 +726,11 @@ namespace Zuby.ADGV
                 _removedsessionNodes.Clear();
             }
 
+            _checkListNotInLiterals.Clear();
+            _checkListLastUsedNotIn = false;
+            _checkListAllLiterals.Clear();
+            _checkListLiteralStateInitialized = false;
+
             for (int i = 2; i < customFilterLastFiltersListMenuItem.DropDownItems.Count - 1; i++)
             {
                 (customFilterLastFiltersListMenuItem.DropDownItems[i] as ToolStripMenuItem).Checked = false;
@@ -847,19 +856,65 @@ namespace Zuby.ADGV
 
                     if (_loadedNodes.Count > 2 || selectAllNode == null)
                     {
-                        string filter = BuildNodesFilterString(
-                            (IsFilterNOTINLogicEnabled && (DataType != typeof(DateTime) && DataType != typeof(TimeSpan) && DataType != typeof(bool)) ?
-                                _loadedNodes.AsParallel().Cast<TreeNodeItemSelector>().Where(
-                                    n => n.NodeType != TreeNodeItemSelector.CustomNodeType.SelectAll
-                                        && n.NodeType != TreeNodeItemSelector.CustomNodeType.SelectEmpty
-                                        && n.CheckState == CheckState.Unchecked
-                                ) :
-                                _loadedNodes.AsParallel().Cast<TreeNodeItemSelector>().Where(
-                                    n => n.NodeType != TreeNodeItemSelector.CustomNodeType.SelectAll
-                                        && n.NodeType != TreeNodeItemSelector.CustomNodeType.SelectEmpty
-                                        && n.CheckState != CheckState.Unchecked
-                                ))
-                        );
+                        var defaultNodes = _loadedNodes.Where(
+                            n => n.NodeType != TreeNodeItemSelector.CustomNodeType.SelectAll
+                                && n.NodeType != TreeNodeItemSelector.CustomNodeType.SelectEmpty)
+                            .ToList();
+
+                        var checkedNodes = defaultNodes.Where(n => n.CheckState != CheckState.Unchecked).ToList();
+                        var uncheckedNodes = defaultNodes.Where(n => n.CheckState == CheckState.Unchecked).ToList();
+
+                        string filter;
+                        bool useNotIn = false;
+
+                        if (DataType == typeof(DateTime) || DataType == typeof(TimeSpan) || DataType == typeof(bool))
+                        {
+                            filter = BuildNodesFilterString(checkedNodes);
+                            _checkListNotInLiterals.Clear();
+                            _checkListLastUsedNotIn = false;
+                            _checkListAllLiterals.Clear();
+                            _checkListLiteralStateInitialized = false;
+                        }
+                        else
+                        {
+                            var currentChecked = new HashSet<string>(BuildNodeFilterLiterals(checkedNodes));
+                            var currentUnchecked = new HashSet<string>(BuildNodeFilterLiterals(uncheckedNodes));
+
+                            if (!_checkListLiteralStateInitialized)
+                            {
+                                _checkListAllLiterals = new HashSet<string>(currentChecked);
+                                _checkListAllLiterals.UnionWith(currentUnchecked);
+                                _checkListLiteralStateInitialized = true;
+                            }
+
+                            if (_checkListLastUsedNotIn)
+                            {
+                                // Continue excluding historical values and newly unchecked values.
+                                _checkListNotInLiterals.UnionWith(currentUnchecked);
+                            }
+                            else
+                            {
+                                // Rebuild exclusions from universe and current checked set.
+                                _checkListNotInLiterals = new HashSet<string>(_checkListAllLiterals);
+                                _checkListNotInLiterals.ExceptWith(currentChecked);
+                            }
+
+                            var effectiveChecked = new HashSet<string>(_checkListAllLiterals);
+                            effectiveChecked.ExceptWith(_checkListNotInLiterals);
+
+                            useNotIn = _checkListNotInLiterals.Count < effectiveChecked.Count;
+
+                            if (useNotIn)
+                            {
+                                _checkListLastUsedNotIn = true;
+                                filter = string.Join(", ", _checkListNotInLiterals);
+                            }
+                            else
+                            {
+                                _checkListLastUsedNotIn = false;
+                                filter = string.Join(", ", effectiveChecked);
+                            }
+                        }
 
                         if (filter.Length > 0)
                         {
@@ -875,14 +930,14 @@ namespace Zuby.ADGV
                                         DataType == typeof(Decimal) ||
                                         DataType == typeof(Byte) || DataType == typeof(SByte) || DataType == typeof(String))
                             {
-                                if (IsFilterNOTINLogicEnabled)
+                                if (useNotIn)
                                     FilterString += "[{0}] NOT IN (" + filter + ")";
                                 else
                                     FilterString += "[{0}] IN (" + filter + ")";
                             }
                             else if (DataType == typeof(Double))
                             {
-                                if (IsFilterNOTINLogicEnabled)
+                                if (useNotIn)
                                     FilterString += "Convert([{0}],System.String) NOT IN (" + filter + ")";
                                 else
                                     FilterString += "Convert([{0}],System.String) IN (" + filter + ")";
@@ -891,7 +946,7 @@ namespace Zuby.ADGV
                             { }
                             else
                             {
-                                if (IsFilterNOTINLogicEnabled)
+                                if (useNotIn)
                                     FilterString += "Convert([{0}],System.String) NOT IN (" + filter + ")";
                                 else
                                     FilterString += "Convert([{0}],System.String) IN (" + filter + ")";
@@ -902,6 +957,27 @@ namespace Zuby.ADGV
 
                 if (oldfilter != FilterString && FilterChanged != null)
                     FilterChanged(this, new EventArgs());
+            }
+        }
+
+        private IEnumerable<string> BuildNodeFilterLiterals(IEnumerable<TreeNodeItemSelector> nodes)
+        {
+            foreach (var node in nodes)
+            {
+                if (DataType == typeof(Int32) || DataType == typeof(Int64) || DataType == typeof(Int16) ||
+                    DataType == typeof(UInt32) || DataType == typeof(UInt64) || DataType == typeof(UInt16) ||
+                    DataType == typeof(Byte) || DataType == typeof(SByte))
+                {
+                    yield return node.Value.ToString();
+                }
+                else if (DataType == typeof(Single) || DataType == typeof(Double) || DataType == typeof(Decimal))
+                {
+                    yield return node.Value.ToString().Replace(",", ".");
+                }
+                else
+                {
+                    yield return "'" + FormatFilterString(node.Value.ToString()) + "'";
+                }
             }
         }
 
@@ -1531,6 +1607,11 @@ namespace Zuby.ADGV
             if (_activeFilterType == FilterType.CheckList)
                 SetNodesCheckState(_loadedNodes, false);
 
+            _checkListNotInLiterals.Clear();
+            _checkListLastUsedNotIn = false;
+            _checkListAllLiterals.Clear();
+            _checkListLiteralStateInitialized = false;
+
             string filterstring = customFilterLastFiltersListMenuItem.DropDownItems[filtersMenuItemIndex].Tag.ToString();
             string viewfilterstring = customFilterLastFiltersListMenuItem.DropDownItems[filtersMenuItemIndex].Text;
 
@@ -1744,7 +1825,7 @@ namespace Zuby.ADGV
 
         /// <summary>
         /// Check list filter changer
-        /// </summary>
+        /// </param>
         /// <param name="sender"></param>
         /// <param name="e"></param>
         private void CheckTextFilter_TextChanged(object sender, EventArgs e)
