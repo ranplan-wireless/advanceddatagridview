@@ -99,6 +99,10 @@ namespace Zuby.ADGV
         private Timer _textFilterTextChangedTimer;
         private int _textFilterTextChangedDelayNodes = DefaultTextFilterTextChangedDelayNodes;
         private int _textFilterTextChangedDelayMs = DefaultTextFilterTextChangedDelayMs;
+        private HashSet<string> _checkListNotInLiterals = new HashSet<string>();
+        private bool _checkListLastUsedNotIn = false;
+        private HashSet<string> _checkListAllLiterals = new HashSet<string>();
+        private bool _checkListLiteralStateInitialized = false;
 
         #endregion
 
@@ -233,7 +237,7 @@ namespace Zuby.ADGV
                 _loadedNodes = DuplicateNodes(_startingNodes);
             }
 
-            _startingNodes = new List<TreeNodeItemSelector>();
+            _startingNodes.Clear();
 
             checkTextFilter.Text = "";
 
@@ -261,10 +265,10 @@ namespace Zuby.ADGV
         /// <param name="e"></param>
         protected override void OnControlRemoved(ControlEventArgs e)
         {
-            _loadedNodes = new List<TreeNodeItemSelector>();
-            _startingNodes = new List<TreeNodeItemSelector>();
-            _removedNodes = new List<TreeNodeItemSelector>();
-            _removedsessionNodes = new List<TreeNodeItemSelector>();
+            _loadedNodes.Clear();
+            _startingNodes.Clear();
+            _removedNodes.Clear();
+            _removedsessionNodes.Clear();
             if (_textFilterTextChangedTimer != null)
                 _textFilterTextChangedTimer.Stop();
 
@@ -571,8 +575,8 @@ namespace Zuby.ADGV
         /// <param name="vals"></param>
         public void Show(Control control, int x, int y, IEnumerable<DataGridViewCell> vals)
         {
-            _removedNodes = new List<TreeNodeItemSelector>();
-            _removedsessionNodes = new List<TreeNodeItemSelector>();
+            _removedNodes.Clear();
+            _removedsessionNodes.Clear();
 
             //add nodes
             BuildNodes(vals);
@@ -614,7 +618,7 @@ namespace Zuby.ADGV
             if (_checkTextFilterRemoveNodesOnSearch)
             {
                 _removedNodes = _loadedNodes.Where(n => n.CheckState == CheckState.Unchecked && n.NodeType == TreeNodeItemSelector.CustomNodeType.Default).ToList();
-                _removedsessionNodes = _removedNodes;
+                _removedsessionNodes = new List<TreeNodeItemSelector>(_removedNodes);
             }
 
             ChecklistReloadNodes();
@@ -718,9 +722,14 @@ namespace Zuby.ADGV
         {
             if (_checkTextFilterRemoveNodesOnSearch)
             {
-                _removedNodes = new List<TreeNodeItemSelector>();
-                _removedsessionNodes = new List<TreeNodeItemSelector>();
+                _removedNodes.Clear();
+                _removedsessionNodes.Clear();
             }
+
+            _checkListNotInLiterals.Clear();
+            _checkListLastUsedNotIn = false;
+            _checkListAllLiterals.Clear();
+            _checkListLiteralStateInitialized = false;
 
             for (int i = 2; i < customFilterLastFiltersListMenuItem.DropDownItems.Count - 1; i++)
             {
@@ -757,7 +766,7 @@ namespace Zuby.ADGV
         /// </summary>
         private void ChecklistClearNodes()
         {
-            _loadedNodes = new List<TreeNodeItemSelector>();
+            _loadedNodes.Clear();
         }
 
         /// <summary>
@@ -828,203 +837,228 @@ namespace Zuby.ADGV
             TreeNodeItemSelector selectAllNode = GetSelectAllNode();
             customFilterLastFiltersListMenuItem.Checked = false;
 
-            // If SelectAll fully checked and no text filter -> clear filter
             if (selectAllNode != null && selectAllNode.Checked && String.IsNullOrEmpty(checkTextFilter.Text))
+                CancelFilterMenuItem_Click(null, new EventArgs());
+            else
             {
-                CancelFilterMenuItem_Click(null, EventArgs.Empty);
-                return;
-            }
+                string oldfilter = FilterString;
+                FilterString = "";
+                _activeFilterType = FilterType.CheckList;
 
-            string oldfilter = FilterString;
-            FilterString = "";
-            _activeFilterType = FilterType.CheckList;
-
-            if (selectAllNode != null && selectAllNode.CheckState == CheckState.Unchecked)
-            {
-                // Only blanks selected
-                FilterString = "[{0}] IS NULL";
-            }
-
-            if (_loadedNodes.Count > 1)
-            {
-                var emptyNode = GetSelectEmptyNode();
-                if (emptyNode != null && emptyNode.Checked)
+                if (selectAllNode != null && selectAllNode.CheckState == CheckState.Unchecked)
                     FilterString = "[{0}] IS NULL";
 
-                if (_loadedNodes.Count > 2 || emptyNode == null)
+                if (_loadedNodes.Count > 1)
                 {
-                    // Collect default nodes (values) excluding special ones
-                    var valueNodes = _loadedNodes.Where(n => n.NodeType == TreeNodeItemSelector.CustomNodeType.Default).ToList();
-                    if (valueNodes.Count > 0)
-                    {
-                        var checkedNodes = valueNodes.Where(n => n.CheckState != CheckState.Unchecked).ToList();
-                        var uncheckedNodes = valueNodes.Where(n => n.CheckState == CheckState.Unchecked).ToList();
+                    selectAllNode = GetSelectEmptyNode();
+                    if (selectAllNode != null && selectAllNode.Checked)
+                        FilterString = "[{0}] IS NULL";
 
-                        if (checkedNodes.Count == valueNodes.Count && String.IsNullOrEmpty(FilterString))
+                    if (_loadedNodes.Count > 2 || selectAllNode == null)
+                    {
+                        var defaultNodes = _loadedNodes.Where(
+                            n => n.NodeType != TreeNodeItemSelector.CustomNodeType.SelectAll
+                                && n.NodeType != TreeNodeItemSelector.CustomNodeType.SelectEmpty)
+                            .ToList();
+
+                        var checkedNodes = defaultNodes.Where(n => n.CheckState != CheckState.Unchecked).ToList();
+                        var uncheckedNodes = defaultNodes.Where(n => n.CheckState == CheckState.Unchecked).ToList();
+
+                        string filter;
+                        bool useNotIn = false;
+
+                        if (DataType == typeof(DateTime) || DataType == typeof(TimeSpan) || DataType == typeof(bool))
                         {
-                            // All selected -> no filter
-                            FilterString = "";
-                        }
-                        else if (checkedNodes.Count == 0)
-                        {
-                            // None selected (excluding blanks) -> produce always false condition
-                            FilterString = "0=1";
+                            filter = BuildNodesFilterString(checkedNodes);
+                            _checkListNotInLiterals.Clear();
+                            _checkListLastUsedNotIn = false;
+                            _checkListAllLiterals.Clear();
+                            _checkListLiteralStateInitialized = false;
                         }
                         else
                         {
-                            // Decide strategy: list unchecked (NOT IN) when majority selected to reduce list size.
-                            bool majoritySelected = checkedNodes.Count >= uncheckedNodes.Count;
-                            bool useComplementListing = majoritySelected; // complement means use unchecked list with NOT IN
+                            var currentChecked = new HashSet<string>(BuildNodeFilterLiterals(checkedNodes));
+                            var currentUnchecked = new HashSet<string>(BuildNodeFilterLiterals(uncheckedNodes));
 
-                            // If NOT IN logic is explicitly enabled we invert the meaning of selection for filtering
-                            if (IsFilterNOTINLogicEnabled)
-                                useComplementListing = !useComplementListing;
-
-                            var candidate = useComplementListing ? uncheckedNodes : checkedNodes;
-                            string list = BuildNodesFilterString(candidate);
-
-                            if (list.Length > 0)
+                            if (!_checkListLiteralStateInitialized)
                             {
-                                if (DataType == typeof(DateTime) || DataType == typeof(TimeSpan))
-                                {
-                                    // list already contains OR-separated predicates
-                                    if (FilterString.Length > 0 && !FilterString.EndsWith(" "))
-                                        FilterString += " OR ";
-                                    FilterString += list;
-                                }
-                                else if (DataType == typeof(bool))
-                                {
-                                    // For bool produce equality or inequality if complement chosen
-                                    bool target = checkedNodes.First(n => n.CheckState != CheckState.Unchecked).Value is bool b && b;
-                                    if (useComplementListing)
-                                    {
-                                        // selecting most values means excluding candidate (unchecked) -> still equality of selected true/false if one value
-                                        // If both true and false present we have no filter (already handled above). So here we expect a single value.
-                                        FilterString += $"[{0}] = {target.ToString()}";
-                                    }
-                                    else
-                                    {
-                                        FilterString += $"[{0}] = {target.ToString()}";
-                                    }
-                                }
-                                else if (DataType == typeof(Int32) || DataType == typeof(Int64) || DataType == typeof(Int16) ||
-                                         DataType == typeof(UInt32) || DataType == typeof(UInt64) || DataType == typeof(UInt16) ||
-                                         DataType == typeof(Decimal) || DataType == typeof(Byte) || DataType == typeof(SByte) ||
-                                         DataType == typeof(Single) || DataType == typeof(Double))
-                                {
-                                    // Numeric types: for integer and decimal we can use direct IN; for floating (Single/Double) revert to Convert to string to avoid precision mismatch.
-                                    bool isFloat = (DataType == typeof(Single) || DataType == typeof(Double));
-                                    if (isFloat)
-                                    {
-                                        FilterString += useComplementListing ? "Convert([{0}],System.String) NOT IN (" + list + ")" : "Convert([{0}],System.String) IN (" + list + ")";
-                                    }
-                                    else
-                                    {
-                                        FilterString += useComplementListing ? "[{0}] NOT IN (" + list + ")" : "[{0}] IN (" + list + ")";
-                                    }
-                                }
-                                else if (DataType == typeof(String))
-                                {
-                                    FilterString += useComplementListing ? "[{0}] NOT IN (" + list + ")" : "[{0}] IN (" + list + ")";
-                                }
-                                else if (DataType == typeof(Bitmap))
-                                {
-                                    // Not supported, ignore
-                                }
+                                _checkListAllLiterals = new HashSet<string>(currentChecked);
+                                _checkListAllLiterals.UnionWith(currentUnchecked);
+                                _checkListLiteralStateInitialized = true;
+                            }
+
+                            if (_checkListLastUsedNotIn)
+                            {
+                                // Continue excluding historical values and newly unchecked values.
+                                _checkListNotInLiterals.UnionWith(currentUnchecked);
+                            }
+                            else
+                            {
+                                // Rebuild exclusions from universe and current checked set.
+                                _checkListNotInLiterals = new HashSet<string>(_checkListAllLiterals);
+                                _checkListNotInLiterals.ExceptWith(currentChecked);
+                            }
+
+                            var effectiveChecked = new HashSet<string>(_checkListAllLiterals);
+                            effectiveChecked.ExceptWith(_checkListNotInLiterals);
+
+                            useNotIn = _checkListNotInLiterals.Count < effectiveChecked.Count;
+
+                            if (useNotIn)
+                            {
+                                _checkListLastUsedNotIn = true;
+                                filter = string.Join(", ", _checkListNotInLiterals);
+                            }
+                            else
+                            {
+                                _checkListLastUsedNotIn = false;
+                                filter = string.Join(", ", effectiveChecked);
+                            }
+                        }
+
+                        if (filter.Length > 0)
+                        {
+                            if (FilterString.Length > 0)
+                                FilterString += " OR ";
+
+                            if (DataType == typeof(DateTime) || DataType == typeof(TimeSpan))
+                                FilterString += filter;
+                            else if (DataType == typeof(bool))
+                                FilterString += "[{0}] =" + filter;
+                            else if (DataType == typeof(Int32) || DataType == typeof(Int64) || DataType == typeof(Int16) ||
+                                        DataType == typeof(UInt32) || DataType == typeof(UInt64) || DataType == typeof(UInt16) ||
+                                        DataType == typeof(Decimal) ||
+                                        DataType == typeof(Byte) || DataType == typeof(SByte) || DataType == typeof(String))
+                            {
+                                if (useNotIn)
+                                    FilterString += "[{0}] NOT IN (" + filter + ")";
                                 else
-                                {
-                                    // Fallback to Convert for unknown types
-                                    FilterString += useComplementListing ? "Convert([{0}],System.String) NOT IN (" + list + ")" : "Convert([{0}],System.String) IN (" + list + ")";
-                                }
+                                    FilterString += "[{0}] IN (" + filter + ")";
+                            }
+                            else if (DataType == typeof(Double))
+                            {
+                                if (useNotIn)
+                                    FilterString += "Convert([{0}],System.String) NOT IN (" + filter + ")";
+                                else
+                                    FilterString += "Convert([{0}],System.String) IN (" + filter + ")";
+                            }
+                            else if (DataType == typeof(Bitmap))
+                            { }
+                            else
+                            {
+                                if (useNotIn)
+                                    FilterString += "Convert([{0}],System.String) NOT IN (" + filter + ")";
+                                else
+                                    FilterString += "Convert([{0}],System.String) IN (" + filter + ")";
                             }
                         }
                     }
                 }
-            }
 
-            if (oldfilter != FilterString && FilterChanged != null)
-                FilterChanged(this, EventArgs.Empty);
+                if (oldfilter != FilterString && FilterChanged != null)
+                    FilterChanged(this, new EventArgs());
+            }
+        }
+
+        private IEnumerable<string> BuildNodeFilterLiterals(IEnumerable<TreeNodeItemSelector> nodes)
+        {
+            foreach (var node in nodes)
+            {
+                if (DataType == typeof(Int32) || DataType == typeof(Int64) || DataType == typeof(Int16) ||
+                    DataType == typeof(UInt32) || DataType == typeof(UInt64) || DataType == typeof(UInt16) ||
+                    DataType == typeof(Byte) || DataType == typeof(SByte))
+                {
+                    yield return node.Value.ToString();
+                }
+                else if (DataType == typeof(Single) || DataType == typeof(Double) || DataType == typeof(Decimal))
+                {
+                    yield return node.Value.ToString().Replace(",", ".");
+                }
+                else
+                {
+                    yield return "'" + FormatFilterString(node.Value.ToString()) + "'";
+                }
+            }
         }
 
         /// <summary>
-        /// Build a Filter string based on selected Nodes. For numeric/string it returns a comma separated list of constants.
-        /// For DateTime/TimeSpan returns OR-separated predicate fragments.
+        /// Build a Filter string based on selectd Nodes
         /// </summary>
+        /// <param name="nodes"></param>
+        /// <returns></returns>
         private string BuildNodesFilterString(IEnumerable<TreeNodeItemSelector> nodes)
         {
-            StringBuilder sb = new StringBuilder();
-            string sep = (DataType == typeof(DateTime) || DataType == typeof(TimeSpan)) ? " OR " : ", ";
-            if (nodes == null) return "";
+            StringBuilder sb = new StringBuilder("");
+            string appx = (DataType == typeof(DateTime) || DataType == typeof(TimeSpan)) ? " OR " : ", ";
 
-            if (DataType == typeof(DateTime))
+            if (nodes != null && nodes.Count() > 0)
             {
-                foreach (var n in nodes.Where(n => n.CheckState == CheckState.Unchecked ? false : true))
+                if (DataType == typeof(DateTime))
                 {
-                    // Only leaf nodes produce predicate; if children selected recurse
-                    if (n.Nodes.Count > 0 && n.Nodes.Cast<TreeNodeItemSelector>().Any(c => c.CheckState != CheckState.Unchecked))
+                    foreach (TreeNodeItemSelector n in nodes)
                     {
-                        string sub = BuildNodesFilterString(n.Nodes.Cast<TreeNodeItemSelector>().Where(c => c.CheckState != CheckState.Unchecked));
-                        if (sub.Length > 0) sb.Append(sub + sep);
-                    }
-                    else
-                    {
-                        DateTime dt = (DateTime)n.Value;
-                        sb.Append("(Convert([{0}], 'System.String') LIKE '%" + Convert.ToString(IsFilterDateAndTimeEnabled ? dt : dt.Date, CultureInfo.CurrentCulture) + "%')" + sep);
+                        if (n.Checked && (n.Nodes.AsParallel().Cast<TreeNodeItemSelector>().Where(sn => sn.CheckState != CheckState.Unchecked).Count() == 0))
+                        {
+                            DateTime dt = (DateTime)n.Value;
+                            sb.Append("(Convert([{0}], 'System.String') LIKE '%" + Convert.ToString((IsFilterDateAndTimeEnabled ? dt : dt.Date), CultureInfo.CurrentCulture) + "%')" + appx);
+                        }
+                        else if (n.CheckState != CheckState.Unchecked && n.Nodes.Count > 0)
+                        {
+                            string subnode = BuildNodesFilterString(n.Nodes.AsParallel().Cast<TreeNodeItemSelector>().Where(sn => sn.CheckState != CheckState.Unchecked));
+                            if (subnode.Length > 0)
+                                sb.Append(subnode + appx);
+                        }
                     }
                 }
-            }
-            else if (DataType == typeof(TimeSpan))
-            {
-                foreach (var n in nodes.Where(n => n.CheckState != CheckState.Unchecked))
+                else if (DataType == typeof(TimeSpan))
                 {
-                    if (n.Nodes.Count > 0 && n.Nodes.Cast<TreeNodeItemSelector>().Any(c => c.CheckState != CheckState.Unchecked))
+                    foreach (TreeNodeItemSelector n in nodes)
                     {
-                        string sub = BuildNodesFilterString(n.Nodes.Cast<TreeNodeItemSelector>().Where(c => c.CheckState != CheckState.Unchecked));
-                        if (sub.Length > 0) sb.Append(sub + sep);
-                    }
-                    else
-                    {
-                        TimeSpan ts = (TimeSpan)n.Value;
-                        sb.Append("(Convert([{0}], 'System.String') LIKE '%P" + (ts.Days > 0 ? ts.Days + "D" : "") + (ts.TotalHours > 0 ? "T" : "") + (ts.Hours > 0 ? ts.Hours + "H" : "") + (ts.Minutes > 0 ? ts.Minutes + "M" : "") + (ts.Seconds > 0 ? ts.Seconds + "S" : "") + "%')" + sep);
+                        if (n.Checked && (n.Nodes.AsParallel().Cast<TreeNodeItemSelector>().Where(sn => sn.CheckState != CheckState.Unchecked).Count() == 0))
+                        {
+                            TimeSpan ts = (TimeSpan)n.Value;
+                            sb.Append("(Convert([{0}], 'System.String') LIKE '%P" + ((int)ts.Days > 0 ? (int)ts.Days + "D" : "") + (ts.TotalHours > 0 ? "T" : "") + ((int)ts.Hours > 0 ? (int)ts.Hours + "H" : "") + ((int)ts.Minutes > 0 ? (int)ts.Minutes + "M" : "") + ((int)ts.Seconds > 0 ? (int)ts.Seconds + "S" : "") + "%')" + appx);
+                        }
+                        else if (n.CheckState != CheckState.Unchecked && n.Nodes.Count > 0)
+                        {
+                            string subnode = BuildNodesFilterString(n.Nodes.AsParallel().Cast<TreeNodeItemSelector>().Where(sn => sn.CheckState != CheckState.Unchecked));
+                            if (subnode.Length > 0)
+                                sb.Append(subnode + appx);
+                        }
                     }
                 }
-            }
-            else if (DataType == typeof(bool))
-            {
-                var first = nodes.FirstOrDefault(n => n.CheckState != CheckState.Unchecked);
-                if (first != null) return first.Value.ToString();
-            }
-            else if (DataType == typeof(Int32) || DataType == typeof(Int64) || DataType == typeof(Int16) ||
-                     DataType == typeof(UInt32) || DataType == typeof(UInt64) || DataType == typeof(UInt16) ||
-                     DataType == typeof(Byte) || DataType == typeof(SByte))
-            {
-                foreach (var n in nodes) sb.Append(n.Value + sep);
-            }
-            else if (DataType == typeof(Single) || DataType == typeof(Double) || DataType == typeof(Decimal))
-            {
-                foreach (var n in nodes)
+                else if (DataType == typeof(bool))
                 {
-                    if (DataType == typeof(Single) || DataType == typeof(Double))
-                        sb.Append("'" + Convert.ToString(n.Value, CultureInfo.InvariantCulture) + "'" + sep); // keep as string for Convert string comparison
-                    else
-                        sb.Append(Convert.ToString(n.Value, CultureInfo.InvariantCulture) + sep);
+                    foreach (TreeNodeItemSelector n in nodes)
+                    {
+                        sb.Append(n.Value.ToString());
+                        break;
+                    }
                 }
-            }
-            else if (DataType == typeof(String))
-            {
-                foreach (var n in nodes) sb.Append("'" + FormatFilterString(n.Value.ToString()) + "'" + sep);
-            }
-            else if (DataType == typeof(Bitmap))
-            {
-                // unsupported
-            }
-            else
-            {
-                foreach (var n in nodes) sb.Append("'" + FormatFilterString(Convert.ToString(n.Value, CultureInfo.CurrentCulture)) + "'" + sep);
+                else if (DataType == typeof(Int32) || DataType == typeof(Int64) || DataType == typeof(Int16) ||
+                    DataType == typeof(UInt32) || DataType == typeof(UInt64) || DataType == typeof(UInt16) ||
+                    DataType == typeof(Byte) || DataType == typeof(SByte))
+                {
+                    foreach (TreeNodeItemSelector n in nodes)
+                        sb.Append(n.Value.ToString() + appx);
+                }
+                else if (DataType == typeof(Single) || DataType == typeof(Double) || DataType == typeof(Decimal))
+                {
+                    foreach (TreeNodeItemSelector n in nodes)
+                        sb.Append(n.Value.ToString().Replace(",", ".") + appx);
+                }
+                else if (DataType == typeof(Bitmap))
+                { }
+                else
+                {
+                    foreach (TreeNodeItemSelector n in nodes)
+                        sb.Append("'" + FormatFilterString(n.Value.ToString()) + "'" + appx);
+                }
             }
 
-            if (sb.Length > sep.Length && DataType != typeof(bool))
-                sb.Remove(sb.Length - sep.Length, sep.Length);
+            if (sb.Length > appx.Length && DataType != typeof(bool))
+                sb.Remove(sb.Length - appx.Length, appx.Length);
+
             return sb.ToString();
         }
 
@@ -1270,10 +1304,11 @@ namespace Zuby.ADGV
         /// <returns></returns>
         private bool HasNodesChecked(IEnumerable<TreeNodeItemSelector> nodes)
         {
-            bool state = false;
+            bool state;
             if (!String.IsNullOrEmpty(checkTextFilter.Text))
             {
-                state = nodes.Any(n => n.CheckState == CheckState.Checked && n.Text.ToLower().Contains(checkTextFilter.Text.ToLower()));
+                string filterText = checkTextFilter.Text.ToLower();
+                state = nodes.Any(n => n.CheckState == CheckState.Checked && n.Text.ToLower().Contains(filterText));
             }
             else
             {
@@ -1281,21 +1316,15 @@ namespace Zuby.ADGV
             }
 
             if (state)
-                return state;
+                return true;
 
             foreach (TreeNodeItemSelector node in nodes)
             {
-                foreach (TreeNodeItemSelector nodesel in node.Nodes)
-                {
-                    state = HasNodesChecked(new List<TreeNodeItemSelector> { nodesel });
-                    if (state)
-                        break;
-                }
-                if (state)
-                    break;
+                if (node.Nodes.Count > 0 && HasNodesChecked(node.Nodes.Cast<TreeNodeItemSelector>()))
+                    return true;
             }
 
-            return state;
+            return false;
         }
 
         /// <summary>
@@ -1319,7 +1348,7 @@ namespace Zuby.ADGV
                 {
                     foreach (TreeNodeItemSelector subnode in node.Nodes)
                     {
-                        SetNodesCheckState(new List<TreeNodeItemSelector> { subnode }, node.Checked);
+                        SetNodesCheckState(subnode, node.Checked);
                     }
                 }
 
@@ -1338,15 +1367,24 @@ namespace Zuby.ADGV
         {
             foreach (TreeNodeItemSelector node in nodes)
             {
-                node.Checked = isChecked;
-                if (node.Nodes != null && node.Nodes.Count > 0)
-                {
-                    foreach (TreeNodeItemSelector subnode in node.Nodes)
-                    {
-                        SetNodesCheckState(new List<TreeNodeItemSelector> { subnode }, isChecked);
-                    }
-                }
+                SetNodesCheckState(node, isChecked);
+            }
+        }
 
+        /// <summary>
+        /// Set Node CheckState recursively
+        /// </summary>
+        /// <param name="node"></param>
+        /// <param name="isChecked"></param>
+        private void SetNodesCheckState(TreeNodeItemSelector node, bool isChecked)
+        {
+            node.Checked = isChecked;
+            if (node.Nodes != null && node.Nodes.Count > 0)
+            {
+                foreach (TreeNodeItemSelector subnode in node.Nodes)
+                {
+                    SetNodesCheckState(subnode, isChecked);
+                }
             }
         }
 
@@ -1442,7 +1480,12 @@ namespace Zuby.ADGV
         /// </summary>
         private List<TreeNodeItemSelector> DuplicateNodes(IEnumerable<TreeNodeItemSelector> nodes)
         {
-            return nodes.Select(n => n.Clone()).ToList();
+            List<TreeNodeItemSelector> ret = new List<TreeNodeItemSelector>();
+            foreach (TreeNodeItemSelector n in nodes)
+            {
+                ret.Add(n.Clone());
+            }
+            return ret;
         }
 
         #endregion
@@ -1563,6 +1606,11 @@ namespace Zuby.ADGV
         {
             if (_activeFilterType == FilterType.CheckList)
                 SetNodesCheckState(_loadedNodes, false);
+
+            _checkListNotInLiterals.Clear();
+            _checkListLastUsedNotIn = false;
+            _checkListAllLiterals.Clear();
+            _checkListLiteralStateInitialized = false;
 
             string filterstring = customFilterLastFiltersListMenuItem.DropDownItems[filtersMenuItemIndex].Tag.ToString();
             string viewfilterstring = customFilterLastFiltersListMenuItem.DropDownItems[filtersMenuItemIndex].Text;
@@ -1777,7 +1825,7 @@ namespace Zuby.ADGV
 
         /// <summary>
         /// Check list filter changer
-        /// </summary>
+        /// </param>
         /// <param name="sender"></param>
         /// <param name="e"></param>
         private void CheckTextFilter_TextChanged(object sender, EventArgs e)
@@ -1831,7 +1879,7 @@ namespace Zuby.ADGV
                 }
             }
 
-            _removedNodes = _removedsessionNodes;
+            _removedNodes = new List<TreeNodeItemSelector>(_removedsessionNodes);
             if (_checkTextFilterRemoveNodesOnSearch)
             {
                 for (int i = _loadedNodes.Count - 1; i >= 0; i--)
@@ -2020,8 +2068,13 @@ namespace Zuby.ADGV
                 cancelFilterMenuItem.Height +
                 toolStripSeparator1MenuItem.Height +
                 toolStripSeparator2MenuItem.Height +
-                customFilterLastFiltersListMenuItem.Height +
                 toolStripSeparator3MenuItem.Height +
+                sortASCMenuItem.Height +
+                sortDESCMenuItem.Height +
+                cancelSortMenuItem.Height +
+                cancelFilterMenuItem.Height +
+                customFilterMenuItem.Height +
+                customFilterLastFiltersListMenuItem.Height +
                 checkFilterListControlHost.Height +
                 checkTextFilterControlHost.Height +
                 checkFilterListButtonsControlHost.Height +
