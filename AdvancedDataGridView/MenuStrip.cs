@@ -77,6 +77,8 @@ namespace Zuby.ADGV
         /// </summary>
         public const int DefaultTextFilterTextChangedDelayMs = 300;
 
+        private const string ChecklistMoreNodeText = "...";
+
         #endregion
 
 
@@ -103,6 +105,7 @@ namespace Zuby.ADGV
         private bool _checkListLastUsedNotIn = false;
         private HashSet<string> _checkListAllLiterals = new HashSet<string>();
         private bool _checkListLiteralStateInitialized = false;
+        private int _currentChecklistNodesLimit = DefaultMaxChecklistNodes;
 
         #endregion
 
@@ -338,6 +341,7 @@ namespace Zuby.ADGV
             set
             {
                 _maxChecklistNodes = value;
+                _currentChecklistNodesLimit = value;
             }
         }
 
@@ -577,6 +581,7 @@ namespace Zuby.ADGV
         {
             _removedNodes.Clear();
             _removedsessionNodes.Clear();
+            _currentChecklistNodesLimit = _maxChecklistNodes;
 
             //add nodes
             BuildNodes(vals);
@@ -609,6 +614,7 @@ namespace Zuby.ADGV
             _checkTextFilterChangedEnabled = false;
             checkTextFilter.Text = "";
             _checkTextFilterChangedEnabled = true;
+            _currentChecklistNodesLimit = _maxChecklistNodes;
             if (_restoreFilter || _checkTextFilterRemoveNodesOnSearch)
             {
                 //reset the starting nodes
@@ -785,37 +791,63 @@ namespace Zuby.ADGV
         {
             checkList.BeginUpdate();
             checkList.Nodes.Clear();
-            int nodecount = 0;
+
+            bool hasMoreDefaultNodes = false;
+            int defaultNodesShown = 0;
+            int maxNodesToShow = _currentChecklistNodesLimit;
+            bool unlimited = _maxChecklistNodes == 0;
+
             foreach (TreeNodeItemSelector node in _loadedNodes)
             {
                 if (node.NodeType == TreeNodeItemSelector.CustomNodeType.Default)
                 {
-                    if (_maxChecklistNodes == 0)
+                    if (node.IsExcludedFromView)
+                        continue;
+
+                    if (unlimited || maxNodesToShow < 0)
                     {
-                        if (!node.IsExcludedFromView)
-                            checkList.Nodes.Add(node);
+                        checkList.Nodes.Add(node);
+                    }
+                    else if (defaultNodesShown < maxNodesToShow)
+                    {
+                        checkList.Nodes.Add(node);
+                        defaultNodesShown++;
                     }
                     else
                     {
-                        if (nodecount < _maxChecklistNodes && !node.IsExcludedFromView)
-                            checkList.Nodes.Add(node);
-                        else if (nodecount == _maxChecklistNodes)
-                            checkList.Nodes.Add("...");
-                        if (!node.IsExcludedFromView || nodecount == _maxChecklistNodes)
-                            nodecount++;
+                        hasMoreDefaultNodes = true;
                     }
                 }
                 else
                 {
                     checkList.Nodes.Add(node);
                 }
-
             }
+
+            if (!unlimited && maxNodesToShow >= 0 && hasMoreDefaultNodes)
+                checkList.Nodes.Add(ChecklistMoreNodeText);
 
             if (checkList.Nodes.Count == 1)
                 checkList.Nodes.Clear();
 
             checkList.EndUpdate();
+        }
+
+        private void ChecklistLoadMoreNodes()
+        {
+            if (_maxChecklistNodes == 0)
+                return;
+
+            int batchSize = _maxChecklistNodes > 0 ? _maxChecklistNodes : DefaultMaxChecklistNodes;
+            if (batchSize <= 0)
+                batchSize = DefaultMaxChecklistNodes;
+
+            if (_currentChecklistNodesLimit < 0)
+                _currentChecklistNodesLimit = batchSize;
+            else
+                _currentChecklistNodesLimit += batchSize;
+
+            ChecklistReloadNodes();
         }
 
         /// <summary>
@@ -1518,7 +1550,9 @@ namespace Zuby.ADGV
             if (e.KeyCode == Keys.Space)
             {
                 //check the node check status
-                NodeCheckChange(checkList.SelectedNode as TreeNodeItemSelector);
+                var node = checkList.SelectedNode as TreeNodeItemSelector;
+                if (node != null)
+                    NodeCheckChange(node);
             }
         }
 
@@ -1530,6 +1564,13 @@ namespace Zuby.ADGV
         private void CheckList_NodeMouseDoubleClick(object sender, TreeNodeMouseClickEventArgs e)
         {
             TreeNodeItemSelector n = e.Node as TreeNodeItemSelector;
+            if (n == null)
+            {
+                if (e.Node != null && e.Node.Text == ChecklistMoreNodeText)
+                    ChecklistLoadMoreNodes();
+                return;
+            }
+
             //set the new node check status
             SetNodesCheckState(_loadedNodes, false);
             n.CheckState = CheckState.Unchecked;
