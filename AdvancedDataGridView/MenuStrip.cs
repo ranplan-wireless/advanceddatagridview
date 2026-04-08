@@ -882,11 +882,12 @@ namespace Zuby.ADGV
 
                 if (_loadedNodes.Count > 1)
                 {
-                    selectAllNode = GetSelectEmptyNode();
-                    if (selectAllNode != null && selectAllNode.Checked)
+                    var selectEmptyNode = GetSelectEmptyNode();
+                    bool isSelectEmptyUnchecked = selectEmptyNode != null && selectEmptyNode.CheckState == CheckState.Unchecked;
+                    if (selectEmptyNode != null && selectEmptyNode.Checked)
                         FilterString = "[{0}] IS NULL";
 
-                    if (_loadedNodes.Count > 2 || selectAllNode == null)
+                    if (_loadedNodes.Count > 2 || selectEmptyNode == null)
                     {
                         var defaultNodes = _loadedNodes.Where(
                             n => n.NodeType != TreeNodeItemSelector.CustomNodeType.SelectAll
@@ -962,29 +963,50 @@ namespace Zuby.ADGV
                                         DataType == typeof(Decimal) ||
                                         DataType == typeof(Byte) || DataType == typeof(SByte) || DataType == typeof(String))
                             {
+                                string valueFilter;
                                 if (useNotIn)
-                                    FilterString += "[{0}] NOT IN (" + filter + ")";
+                                    valueFilter = "[{0}] NOT IN (" + filter + ")";
                                 else
-                                    FilterString += "[{0}] IN (" + filter + ")";
+                                    valueFilter = "[{0}] IN (" + filter + ")";
+
+                                if (isSelectEmptyUnchecked)
+                                    FilterString += "([" + "{0}" + "] IS NOT NULL AND " + valueFilter + ")";
+                                else
+                                    FilterString += valueFilter;
                             }
                             else if (DataType == typeof(Double))
                             {
+                                string valueFilter;
                                 if (useNotIn)
-                                    FilterString += "Convert([{0}],System.String) NOT IN (" + filter + ")";
+                                    valueFilter = "Convert([{0}],System.String) NOT IN (" + filter + ")";
                                 else
-                                    FilterString += "Convert([{0}],System.String) IN (" + filter + ")";
+                                    valueFilter = "Convert([{0}],System.String) IN (" + filter + ")";
+
+                                if (isSelectEmptyUnchecked)
+                                    FilterString += "([" + "{0}" + "] IS NOT NULL AND " + valueFilter + ")";
+                                else
+                                    FilterString += valueFilter;
                             }
                             else if (DataType == typeof(Bitmap))
                             { }
                             else
                             {
+                                string valueFilter;
                                 if (useNotIn)
-                                    FilterString += "Convert([{0}],System.String) NOT IN (" + filter + ")";
+                                    valueFilter = "Convert([{0}],System.String) NOT IN (" + filter + ")";
                                 else
-                                    FilterString += "Convert([{0}],System.String) IN (" + filter + ")";
+                                    valueFilter = "Convert([{0}],System.String) IN (" + filter + ")";
+
+                                if (isSelectEmptyUnchecked)
+                                    FilterString += "([" + "{0}" + "] IS NOT NULL AND " + valueFilter + ")";
+                                else
+                                    FilterString += valueFilter;
                             }
                         }
                     }
+
+                    if (isSelectEmptyUnchecked && string.IsNullOrEmpty(FilterString))
+                        FilterString = "[{0}] IS NOT NULL";
                 }
 
                 if (oldfilter != FilterString && FilterChanged != null)
