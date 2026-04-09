@@ -764,7 +764,9 @@ namespace Zuby.ADGV
             var columnFilters = filter.Split(new[] { " AND " }, StringSplitOptions.RemoveEmptyEntries);
             for (var i = 0; i < _filterOrderList.Count; i++)
             {
-                filterInfos.Add(new FilterInfo() {ColumnName = _filterOrderList[i], FilterString = columnFilters[i]});
+                var columnName = _filterOrderList[i];
+                var filterString = string.Join(" AND ", columnFilters.Where(c => c.Contains(columnName))).Trim();
+                filterInfos.Add(new FilterInfo() {ColumnName = columnName, FilterString = filterString});
             }
 
             return filterInfos;
