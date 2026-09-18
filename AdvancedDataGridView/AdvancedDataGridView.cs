@@ -9,6 +9,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Data;
 using System.Drawing;
 using System.Globalization;
@@ -738,12 +739,9 @@ namespace Zuby.ADGV
             _filterOrderList.Clear();
             _sortOrderList.Clear();
 
-            var regex = new Regex(@"\[(.+?)]");
-            var filteredColumns = regex.Matches(filter).OfType<Match>().Select(x => x.Groups[1].Value).Distinct();
-            var sortedColumns = regex.Matches(sorting).OfType<Match>().Select(x => x.Groups[1].Value).Distinct();
-
-            _filterOrderList.AddRange(filteredColumns);
-            _sortOrderList.AddRange(sortedColumns);
+            // tokens keep "\]" escapes for real column names containing ']'
+            _filterOrderList.AddRange(ColumnNameEscaper.ParseColumnTokens(filter).Distinct());
+            _sortOrderList.AddRange(ColumnNameEscaper.ParseColumnTokens(sorting).Distinct());
 
             if (filter != null)
                 FilterString = filter;
@@ -765,7 +763,8 @@ namespace Zuby.ADGV
             for (var i = 0; i < _filterOrderList.Count; i++)
             {
                 var columnName = _filterOrderList[i];
-                var filterString = string.Join(" AND ", columnFilters.Where(c => c.Contains(columnName))).Trim();
+                // the persisted expression carries the escaped form of the column reference
+                var filterString = string.Join(" AND ", columnFilters.Where(c => c.Contains(ColumnNameEscaper.Escape(columnName)))).Trim();
                 filterInfos.Add(new FilterInfo() {ColumnName = columnName, FilterString = filterString});
             }
 
@@ -919,8 +918,76 @@ namespace Zuby.ADGV
             {
                 BindingSource datasource = this.DataSource as BindingSource;
                 if (datasource != null)
-                    datasource.Sort = sortEventArgs.SortString;
+                    TryApplySort(datasource, sortEventArgs.SortString);
             }
+        }
+
+        private static void TryApplySort(BindingSource bindingsource, string sort)
+        {
+            if (TryApplySortByDescriptors(bindingsource.List as DataView, sort))
+                return;
+
+            try
+            {
+                bindingsource.Sort = sort;
+            }
+            catch (SyntaxErrorException)
+            {
+            }
+            catch (EvaluateException)
+            {
+            }
+            catch (IndexOutOfRangeException)
+            {
+            }
+            catch (ArgumentException)
+            {
+            }
+        }
+
+        /// <summary>
+        /// Sorts a DataView through property descriptors. Neither DataView.Sort nor
+        /// BindingSource.Sort can address a column whose name contains ']' (no escape
+        /// form exists in their parsers), but descriptor-based sorting is name-agnostic.
+        /// Returns false when the string is not a "[column] ASC|DESC, ..." list resolvable
+        /// against the view, so callers can fall back to the string-based sort.
+        /// </summary>
+        private static bool TryApplySortByDescriptors(DataView view, string sort)
+        {
+            if (view == null || string.IsNullOrEmpty(sort))
+                return false;
+
+            var properties = ((ITypedList)view).GetItemProperties(null);
+            var descriptions = new List<ListSortDescription>();
+            foreach (var clause in sort.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                var token = clause.Trim();
+                var direction = ListSortDirection.Ascending;
+                if (token.EndsWith(" DESC", StringComparison.OrdinalIgnoreCase))
+                {
+                    direction = ListSortDirection.Descending;
+                    token = token.Substring(0, token.Length - 5).Trim();
+                }
+                else if (token.EndsWith(" ASC", StringComparison.OrdinalIgnoreCase))
+                {
+                    token = token.Substring(0, token.Length - 4).Trim();
+                }
+
+                if (!token.StartsWith("[") || !token.EndsWith("]"))
+                    return false;
+
+                var property = properties.Find(ColumnNameEscaper.Unescape(token.Substring(1, token.Length - 2)), false);
+                if (property == null)
+                    return false;
+
+                descriptions.Add(new ListSortDescription(property, direction));
+            }
+
+            if (descriptions.Count == 0)
+                return false;
+
+            ((IBindingListView)view).ApplySort(new ListSortDescriptionCollection(descriptions.ToArray()));
+            return true;
         }
 
         /// <summary>
@@ -1069,19 +1136,55 @@ namespace Zuby.ADGV
             //filter datasource
             if (filterEventArgs.Cancel == false)
             {
+                // an expression the DataView parser cannot address (e.g. a legacy unescaped
+                // column reference) is skipped rather than thrown — the host app keeps running
                 if (this.DataSource is BindingSource bindingsource)
                 {
-                    bindingsource.Filter = filterEventArgs.FilterString;
+                    TryApplyFilter(bindingsource, filterEventArgs.FilterString);
                 }
                 else if (this.DataSource is DataView dataview)
                 {
-                    dataview.RowFilter = filterEventArgs.FilterString;
+                    TryApplyRowFilter(dataview, filterEventArgs.FilterString);
                 }
                 else if (this.DataSource is DataTable datatable)
                 {
                     if (datatable.DefaultView != null)
-                        datatable.DefaultView.RowFilter = filterEventArgs.FilterString;
+                        TryApplyRowFilter(datatable.DefaultView, filterEventArgs.FilterString);
                 }
+            }
+        }
+
+        private static void TryApplyFilter(BindingSource bindingsource, string filter)
+        {
+            try
+            {
+                bindingsource.Filter = filter;
+            }
+            catch (SyntaxErrorException)
+            {
+            }
+            catch (EvaluateException)
+            {
+            }
+            catch (IndexOutOfRangeException)
+            {
+            }
+        }
+
+        private static void TryApplyRowFilter(DataView dataview, string filter)
+        {
+            try
+            {
+                dataview.RowFilter = filter;
+            }
+            catch (SyntaxErrorException)
+            {
+            }
+            catch (EvaluateException)
+            {
+            }
+            catch (IndexOutOfRangeException)
+            {
             }
         }
 
@@ -1447,7 +1550,7 @@ namespace Zuby.ADGV
                     {
                         if (cell.FilterAndSortEnabled && cell.ActiveFilterType != MenuStrip.FilterType.None)
                         {
-                            sb.AppendFormat(appx + "(" + cell.FilterString + ")", Column.DataPropertyName);
+                            sb.Append(appx + ColumnNameEscaper.FormatColumnExpression("(" + cell.FilterString + ")", Column.DataPropertyName));
                             appx = " AND ";
                         }
                     }
@@ -1545,7 +1648,7 @@ namespace Zuby.ADGV
                     {
                         if (cell.FilterAndSortEnabled && cell.ActiveSortType != MenuStrip.SortType.None)
                         {
-                            sb.AppendFormat(appx + cell.SortString, column.DataPropertyName);
+                            sb.Append(appx + ColumnNameEscaper.FormatColumnExpression(cell.SortString, column.DataPropertyName));
                             appx = ", ";
                         }
                     }
